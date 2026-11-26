@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "bakers": {
+      "type": "http",
+      "url": "${BAKERS_URL}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${BAKERS_API_KEY}"
+      }
+    },
+    "code": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem@2.2.0",
+        "/clones"
+      ]
+    },
+    "paperclip": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@paperclipai/mcp-server@2026.1117.0"
+      ]
+    }
+  }
+}
