@@ -21,10 +21,7 @@
     "BAKERS_API_KEY": {
       "type": "secret_ref",
       "secretId": "00000000-0000-0000-0000-000000000000"
-    },
-    "PM_LANGUAGE": {
-      "type": "plain",
-      "value": "de"
     }
-  }
+  },
+  "promptTemplate": "You are agent {{agent.id}} ({{agent.name}}). Host context: Paperclip URL http://localhost:3100; language de."
 }

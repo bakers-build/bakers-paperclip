@@ -45,9 +45,8 @@ describe('adapter config', () => {
     expect(flag('--disallowedTools').split(',')).toEqual(expect.arrayContaining(CODE_WRITES));
   });
 
-  it('takes the bakers key from a company secret, never a plain value, and German by default', () => {
+  it('takes the bakers key from a company secret, never a plain value', () => {
     expect(adapter.env.BAKERS_API_KEY.type).toBe('secret_ref');
-    expect(adapter.env.PM_LANGUAGE).toEqual({ type: 'plain', value: 'de' });
   });
 });
 
