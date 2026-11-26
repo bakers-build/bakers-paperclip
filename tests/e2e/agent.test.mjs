@@ -47,7 +47,9 @@ const agentReplies = async (issue) => (await comments(g.admin, issue)).filter((c
 async function nextReply(issue, seen) {
   return until(async () => {
     const replies = await agentReplies(issue);
-    return replies.length > seen ? replies : null;
+    // Paperclip cancels a wake while the posting run still holds the task, so answer only once it has let go.
+    const free = !ok(await g.admin.api('GET', `/api/issues/${issue.id}`)).executionRunId;
+    return replies.length > seen && free ? replies : null;
   }, { tries: 300, ms: 2000 });
 }
 
