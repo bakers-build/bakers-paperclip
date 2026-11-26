@@ -38,6 +38,15 @@ curl -X POST http://localhost:3100/api/plugins/install -H 'content-type: applica
   -d '{"packageName":"/opt/bakers-paperclip/bakers-bridge","isLocalPath":true}'
 ```
 
+### Local bakers.build
+
+`docker compose --profile bakers up -d` runs a real bakers.build v0.14.0 (its standalone stack,
+pinned by digest) at http://bakers.localhost:8080, with Mailpit for its sign-in mails at
+http://localhost:8125. The first start installs it with `BAKERS_ADMIN_EMAIL` as admin; a login
+link: `docker compose exec bakers-php drush uli --uri=http://bakers.localhost:8080`. Inside the
+compose network it is the same name on port 80, so a PM agent's `BAKERS_URL` is
+`http://bakers.localhost`. It has no webhook yet, so nothing reaches the bridge from it.
+
 ### Demo
 
 `docker compose --profile demo up -d` adds `bakers-demo` on http://localhost:8090: a bakers.build
@@ -99,6 +108,9 @@ task. `tests/e2e/operator.test.mjs` checks this.
 | `ANTHROPIC_API_KEY` | an Anthropic API key for the PM agents' Claude CLI; or leave it empty and set the next one. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | a Claude subscription token: run `claude setup-token` and copy the token it prints. |
 | `PM_CLONES_DIR` | the host directory with the groups' read-only project clones, default `./data/clones`. |
+| `BAKERS_DB_PASSWORD`, `BAKERS_DB_ROOT_PASSWORD` | local bakers.build only: `openssl rand -hex 16` each. |
+| `BAKERS_HASH_SALT` | local bakers.build only: `openssl rand -hex 32`. |
+| `BAKERS_ADMIN_EMAIL` | local bakers.build only: its first admin; any address, the mail goes to Mailpit. |
 | `DEMO_BAKERS_API_KEY` | demo only: any random string, `openssl rand -hex 16`; the demo service account's key. |
 | `BAKERS_WEBHOOK_SECRET` | demo only: any random string, `openssl rand -hex 32`; the demo webhook's signing secret. |
 | `DEMO_PORT` | demo only: the host port of `bakers-demo`, default 8090. |

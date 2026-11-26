@@ -125,3 +125,11 @@ describe('bakers-demo events', () => {
     expect(new Set(deliveries.map((d) => d.event.event_id)).size).toBe(deliveries.length);
   });
 });
+
+describe('bakers-demo overview', () => {
+  it('shows the tickets on a read-only page, escaped', async () => {
+    await bakers.call('bakers_ticket_create', { title: '<b>Gutscheine</b>', workflow: 'bb_work', project: 'DEMO' });
+    const html = await (await fetch(`${demo.url}/`)).text();
+    expect(html).toContain('DEMO-2 · &lt;b&gt;Gutscheine&lt;/b&gt;');
+  });
+});

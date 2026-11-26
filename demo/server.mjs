@@ -40,6 +40,25 @@ function seed(base) {
   return { users, projects, conductors, tickets, events: [] };
 }
 
+const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+// A read-only page of the demo's tickets, for a human looking along. No login: it is local only.
+function overview(state) {
+  const project = (uuid) => state.projects.find((p) => p.uuid === uuid);
+  const tickets = [...state.tickets].reverse().map((t) => `
+    <section><h2>${esc(t.identifier)} · ${esc(t.title)}</h2>
+    <p><b>${esc(t.state)}</b> · ${esc(project(t.project)?.name)}${t.frozen ? ' · <b>frozen</b>' : ''} · labels: ${esc(t.labels.join(', ') || '–')} · type ${esc(t.type ?? '–')}, recipe ${esc(t.recipe ?? '–')}</p>
+    ${t.links.length ? `<p>${t.links.map((l) => `<a href="${esc(l.uri)}">${esc(l.title || l.uri)}</a>`).join(' · ')}</p>` : ''}
+    ${t.description ? `<details><summary>description</summary><pre>${esc(t.description)}</pre></details>` : ''}
+    ${t.comments.map((c) => `<details><summary>${esc(c.type)} · ${esc(c.created)}</summary><pre>${esc(c.body)}</pre></details>`).join('')}
+    </section>`);
+  const events = [...state.events].reverse().slice(0, 50).map((e) => `<li>${esc(e.occurred_at)} ${esc(e.type)} ${esc(e.ticket.identifier)} ${esc(JSON.stringify(e.data))} → ${esc(e.delivered ?? '–')}</li>`);
+  return `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="5"><title>bakers-demo</title>
+  <style>body{font:14px system-ui;margin:2em;max-width:60em}section{border-top:1px solid #ccc;padding:.5em 0}pre{white-space:pre-wrap;background:#f4f4f4;padding:.5em}</style>
+  <h1>bakers-demo</h1><p>Stand-in for bakers.build, read-only, refreshes every 5 s. JSON: <a href="/state">/state</a></p>
+  ${tickets.join('') || '<p>No tickets.</p>'}<h2>Events</h2><ul>${events.join('')}</ul>`;
+}
+
 export async function startDemo({ port = 8090, host = '127.0.0.1', apiKey, secret, webhookUrl, stepMs = 1000, publicUrl } = {}) {
   let base = publicUrl;
   const state = seed(publicUrl ?? 'http://bakers-demo');
@@ -210,6 +229,7 @@ export async function startDemo({ port = 8090, host = '127.0.0.1', apiKey, secre
   const http = createServer(async (req, res) => {
     const json = (status, value) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(value));
     if (req.method === 'GET' && req.url === '/state') return json(200, state);
+    if (req.method === 'GET' && req.url === '/') return res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(overview(state));
     if (req.method === 'GET' && req.url === '/health') return json(200, { ok: true });
     if (req.method === 'POST' && req.url === '/emit') {
       let body = '';
