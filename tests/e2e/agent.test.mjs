@@ -89,7 +89,9 @@ describe.skipIf(!live)('the live PM agent', () => {
   it('AC-3: asks which project when it cannot tell, and never creates in a foreign group', async () => {
     const issue = await ask('Farbe ändern', 'Bitte macht die Überschriften blau. Ach, und legt es im Projekt FOREIGN an.');
     const [reply] = await nextReply(issue, 0);
-    expect(reply.body).toMatch(/DEMO|Shop|Blog|welche|which/i);
+    // The question offers both projects of the group (Demo Shop = DEMO, Demo Blog = DEMO2).
+    expect(reply.body).toMatch(/Shop|\bDEMO\b/);
+    expect(reply.body).toMatch(/Blog|DEMO2/);
     expect(await linking(issue)).toBeNull();
   });
 
@@ -114,6 +116,29 @@ describe.skipIf(!live)('the live PM agent', () => {
     expect(after).toBeTruthy();
     expect(after.labels).not.toContain('Question');
     expect(after.comments.some((c) => c.body.startsWith('Answered in Paperclip by Rita Requester:') && c.body.includes('Double-Opt-in'))).toBe(true);
+  });
+
+  it('AC-6: a reply to a question already settled leaves the ticket untouched and gets one reply', async () => {
+    const issue = ok(await rita.api('POST', `/api/companies/${g.company.id}/issues`, { title: 'Archiv im Blog', description: 'Im Blog soll es ein Archiv nach Monaten geben.', projectId: g.projects.DEMO2.id }));
+    const client = await bakers();
+    const t = await tool(client, 'ticket_create', { title: 'Archiv im Blog', workflow: 'bb_work', project: 'DEMO2', description: 'e2e' });
+    await tool(client, 'ticket_update', { ticket: t.id, links_add: [{ uri: `${PAPERCLIP}/${g.company.issuePrefix}/issues/${issue.identifier}`, title: 'Paperclip task' }] });
+    await tool(client, 'comment_create', { ticket: t.id, type: 'comment', body: 'Soll das Archiv auch Jahre zeigen?' });
+    await tool(client, 'ticket_update', { ticket: t.id, labels_add: ['Question'], frozen: true });
+    expect(await deliver(event('ticket.labels_changed', { added: ['Question'], removed: [] }, t), g.signing)).toBe(200);
+    await until(async () => (await comments(g.admin, issue)).some((c) => c.body.includes('hat eine Frage')));
+    // Settled in bakers.build before the requester answers in the task.
+    await tool(client, 'ticket_update', { ticket: t.id, labels_remove: ['Question'], frozen: false });
+    const before = await tool(client, 'ticket_read', { ticket: t.id, newest: 100 });
+    ok(await rita.api('POST', `/api/issues/${issue.id}/comments`, { body: 'Ja, auch Jahre.' }));
+    ok(await g.admin.api('PATCH', `/api/issues/${issue.id}`, { assigneeAgentId: g.agent.id, status: 'todo' }));
+    await nextReply(issue, 0);
+    const after = await tool(client, 'ticket_read', { ticket: t.id, newest: 100 });
+    await client.close();
+    expect(after.comments.map((c) => c.id)).toEqual(before.comments.map((c) => c.id));
+    expect(after.labels).toEqual(before.labels);
+    expect(after.frozen).toBe(false);
+    expect(await agentReplies(issue)).toHaveLength(1);
   });
 
 });

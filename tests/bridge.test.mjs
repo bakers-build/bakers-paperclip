@@ -198,6 +198,15 @@ describe('deliver: texts', () => {
     ]);
   });
 
+  it('another label added to a ticket frozen with a question posts nothing again', async () => {
+    tickets['t-1'] = ticket({
+      frozen: true,
+      labels: ['Question', 'human-accept'],
+      comments: [{ id: 'q1', type: 'comment', created: '2026-11-26T09:57:00Z', body: 'Soll der Gutschein auch für Versand gelten?' }],
+    });
+    expect(await textOf(event('ticket.labels_changed', { added: ['human-accept'], removed: [] }))).toEqual([]);
+  });
+
   it('a label change on an unfrozen ticket posts nothing', async () => {
     tickets['t-1'] = ticket({ labels: ['Question'] });
     expect(await textOf(event('ticket.labels_changed', { added: ['Question'], removed: [] }))).toEqual([]);

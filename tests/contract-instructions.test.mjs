@@ -63,8 +63,11 @@ describe('hand-over rules', () => {
     expect(flat).toContain('Keep secrets out.');
   });
 
-  it('names no customer: placeholders only', () => {
-    expect(agents).not.toMatch(/keytec/i);
+  it('names no customer: no project key, ticket identifier or host beyond the local placeholder', () => {
+    const keys = new Set(agents.match(/\b[A-Z][A-Z0-9]+(?:-\d+)?\b/g));
+    for (const generic of ['AI', 'CI', 'ID', 'URL', 'UUID', 'UTF-8']) keys.delete(generic);
+    expect([...keys]).toEqual([]);
+    expect(agents.match(/https?:\/\/[^\s)>`]+/g)).toEqual(['http://localhost:3100']);
   });
 });
 

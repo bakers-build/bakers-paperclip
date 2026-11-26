@@ -67,7 +67,9 @@ export async function texts(ev, t, deps) {
       return t.frozen ? [] : [m.runPaused];
     }
     case 'ticket.labels_changed': {
-      if (!t.frozen || !open) return [];
+      // Only the event that added the note's label posts it: any later label change would repeat it.
+      const added = d.added ?? [];
+      if (!t.frozen || !open || !(added.includes(QUESTION_LABEL) || added.includes(TECHNICAL_PROBLEM_LABEL))) return [];
       const kind = labels.includes(TECHNICAL_PROBLEM_LABEL) ? 'technicalProblemLead' : 'questionLead';
       // shortcut: the note is the newest non-summary comment; Hermes also bounded it by frozen_at, which the read does not return.
       const note = newest(t.comments, (c) => c.type !== 'summary');
