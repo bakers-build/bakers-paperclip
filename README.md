@@ -163,7 +163,7 @@ bakers.build sends ticket activity to a webhook of a project, a group or the wor
   or was cancelled in its current state, the ticket is not frozen and no note is open. `created`,
   `assigned`, `review_requested` and `review_completed` post nothing themselves.
 - On every event the bridge also looks at the ticket: a frozen ticket labelled `Question` or
-  `technical problem` posts the lead-in and its note, once per note; each preview link
+  `technical problem` posts the lead-in and its note, once per freeze; each preview link
   (designbook, DDEV) posts once. Summaries are written for developers, so nothing of them is
   passed on; what came out and where to test are on the ticket, or the PM agent tells.
 - **What bakers.build does not send.** No activity is written for a label, a freeze or a link,

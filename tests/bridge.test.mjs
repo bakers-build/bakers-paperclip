@@ -60,7 +60,14 @@ beforeEach(() => {
   failPosts = 0;
   deps = {
     now: () => NOW,
-    store: { get: async (k) => state.get(k) ?? null, set: async (k, v) => void state.set(k, v) },
+    store: {
+      get: async (k) => state.get(k) ?? null,
+      // As Paperclip's plugin_state: value_json is NOT NULL.
+      set: async (k, v) => {
+        if (v == null) throw new Error(`null value for ${k}`);
+        state.set(k, v);
+      },
+    },
     log: (level, message, meta) => logs.push({ level, message, meta }),
     groups: [
       // Another group first: its secret does not verify, so its key never reads this group's tickets.
@@ -136,6 +143,20 @@ describe('deliver: once per X-Bakers-Delivery', () => {
     // A retry: the same delivery id, a new timestamp and signature.
     expect((await run(ev, { at: NOW + 60_000 })).res.status).toBe(200);
     expect(posts).toHaveLength(1);
+  });
+
+  it('a delivery whose queue write was lost (a crash between the two writes) is queued again by its retry and posted once', async () => {
+    const ev = event('status_changed', { new_state: 'working' });
+    const { set } = deps.store;
+    deps.store.set = async (k, v) => {
+      if (k === 'queue') throw new Error('crash');
+      return set(k, v);
+    };
+    await expect(deliver(sign(ev), deps)).rejects.toThrow('crash');
+    deps.store.set = set;
+    expect((await run(ev, { at: NOW + 60_000 })).res.status).toBe(200);
+    await run(ev, { at: NOW + 120_000 });
+    expect(posts.map((p) => p.text)).toEqual([de.states.working]);
   });
 
   it('answers before reading the ticket: the read and the post wait for the drain', async () => {
@@ -303,12 +324,22 @@ describe('drain: question, technical problem and preview, on whichever event com
     ]);
   });
 
-  it('a later question, with a new note, posts again', async () => {
+  it('a comment added while still frozen (the answer, before the unfreeze) posts no second lead-in', async () => {
     tickets['t-1'] = asked();
+    await run(event('assigned'));
+    tickets['t-1'] = asked({ comments: [{ id: 'a1', type: 'comment', created: '2026-11-26T11:00:00Z', body: 'Answered in Paperclip by Requester: ja.' }] });
+    await run(event('assigned'));
+    expect(posts).toHaveLength(1);
+  });
+
+  it('a later question, after the ticket was seen unfrozen, posts again', async () => {
+    tickets['t-1'] = asked();
+    await run(event('assigned'));
+    tickets['t-1'] = ticket();
     await run(event('assigned'));
     tickets['t-1'] = asked({ comments: [{ id: 'q2', type: 'comment', created: '2026-11-26T11:00:00Z', body: 'Und für Geschenkkarten?' }] });
     await run(event('assigned'));
-    expect(posts.map((p) => p.text)).toHaveLength(2);
+    expect(posts.map((p) => p.text)).toEqual([expect.stringContaining('Versand'), expect.stringContaining('Geschenkkarten')]);
   });
 
   it('an unfrozen ticket with the label posts no question', async () => {

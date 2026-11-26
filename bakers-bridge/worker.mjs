@@ -30,7 +30,6 @@ function group(config, companyId, webhookSecret) {
   const call = async (tool, args) => (await bakers()).call(`tool_api__bakers_${tool}`, args);
   const read = (ticket) => call('ticket_read', { ticket, newest: 1000 });
   return {
-    id: companyId,
     secret: webhookSecret,
     messages: MESSAGES[config.language ?? 'de'],
     readTicket: read,

@@ -105,7 +105,9 @@ function extras(t, deps) {
     const note = newest(t.comments, (c) => c.type !== 'summary');
     if (note) {
       const lead = m[kind].replace('{identifier}', () => t.identifier).replace('{title}', () => t.title);
-      out.push({ key: `note:${note.id}`, text: `${lead}\n\n${note.body}` });
+      // Once per freeze, not per comment: an answer written before the unfreeze is no new question.
+      // shortcut: an unfreeze and a new question with no event between them post nothing; upgrade when bakers.build sends a freeze activity.
+      out.push({ key: `question:${t.id}`, text: `${lead}\n\n${note.body}` });
     }
   }
   for (const { uri } of t.links ?? []) {
@@ -171,9 +173,12 @@ export async function deliver({ headers = {}, rawBody = '' }, deps) {
   }
   const { store } = deps;
   return queueWrite(async () => {
-    if (await store.get(`delivery:${id}`)) return { status: 200, reason: 'duplicate' };
-    await store.set(`delivery:${id}`, { id, ev, groups: verified });
-    await store.set('queue', [...((await store.get('queue')) ?? []), id]);
+    const rec = await store.get(`delivery:${id}`);
+    const queue = (await store.get('queue')) ?? [];
+    if (!rec) await store.set(`delivery:${id}`, { id, ev, groups: verified });
+    // A record outside the queue and not drained lost its queue write (a crash): queued again.
+    else if (rec === DONE || queue.includes(id)) return { status: 200, reason: 'duplicate' };
+    await store.set('queue', [...queue, id]);
     return { status: 200 };
   });
 }
@@ -231,6 +236,8 @@ async function handle({ id, ev, groups }, deps) {
   }
   // The group's own settings (its language) over the shared ones.
   deps = { ...deps, ...group };
+  // Seen unfrozen: the ticket's next question posts its lead-in again.
+  if (!(t.frozen && isOpen(t)) && (await deps.store.get(`question:${t.id}`))) await deps.store.set(`question:${t.id}`, false);
   const posts = [...(await texts(ev, t, deps)).map((text, n) => ({ key: `posted:${id}:${n}`, text })), ...extras(t, deps)];
   for (const { key, text } of posts) {
     if (await deps.store.get(key)) continue;
