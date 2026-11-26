@@ -1,9 +1,11 @@
 name: release
 
-# A tag v<version> builds the deployable image and pushes it to
-# ghcr.io/bakers-build/bakers-paperclip:<version> (README › Deploy).
+# Builds the deployable image and pushes it to ghcr.io/bakers-build/bakers-paperclip
+# (README › Deploy): a merge to main as :main, a tag v<version> as :<version>; both also as
+# :sha-<commit>.
 on:
   push:
+    branches: [main]
     tags: ['v*']
 
 permissions:
@@ -36,5 +38,5 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}:${{ github.ref_type == 'tag' && github.ref_name || 'main' }}
             ghcr.io/${{ github.repository }}:sha-${{ github.sha }}

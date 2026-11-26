@@ -57,8 +57,8 @@ key; `tests/e2e/fixture.mjs` does exactly that.
 
 ## Deploy
 
-A tag `v<version>` builds `ghcr.io/bakers-build/bakers-paperclip:<version>`
-(`.github/workflows/release.yml`): the pinned Paperclip image plus this repository's runtime files
+Every merge to `main` builds `ghcr.io/bakers-build/bakers-paperclip:main`, a tag `v<version>`
+builds `:<version>`, and both also `:sha-<commit>` (`.github/workflows/release.yml`): the pinned Paperclip image plus this repository's runtime files
 at `/opt/bakers-paperclip` (`Dockerfile`):
 
 - `agent/mcp.json` and `agent/whois-mcp.mjs`, which every agent run loads;
