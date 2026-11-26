@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { definePlugin, runWorker } from '@paperclipai/plugin-sdk';
 import { connect } from './bakers-client.mjs';
-import { deliver } from './core.mjs';
+import { deliver, drain } from './core.mjs';
 
 const MESSAGES = JSON.parse(readFileSync(new URL('./messages.json', import.meta.url), 'utf8'));
 let ctx;
@@ -27,11 +27,21 @@ function group(config, companyId, webhookSecret) {
   const g = { companyId, agentId: config.agentId };
   let client;
   const bakers = async () => (client ??= await connect(`${config.bakersUrl.replace(/\/+$/, '')}/mcp`, await secret(config.bakersApiKey, companyId)));
-  const read = async (uuid) => (await bakers()).call('tool_api__bakers_ticket_read', { ticket: uuid, newest: 1000 });
+  const call = async (tool, args) => (await bakers()).call(`tool_api__bakers_${tool}`, args);
+  const read = (ticket) => call('ticket_read', { ticket, newest: 1000 });
   return {
+    id: companyId,
     secret: webhookSecret,
     messages: MESSAGES[config.language ?? 'de'],
     readTicket: read,
+    runs: async (t) => (await call('run_list', { ticket: t.id, limit: 1 }))?.runs?.[0] ?? null,
+    // The read has no parent; the search row has. It matches title and description, not the identifier.
+    // shortcut: the parent is found among the 50 newest tickets of that title; upgrade when the read returns it.
+    async parentOf(t) {
+      const row = (await call('ticket_search', { query: t.title }))?.tickets?.find((r) => r.identifier === t.identifier);
+      const p = row?.parent;
+      return p ? read(typeof p === 'string' ? p : (p.uuid ?? p.identifier)) : null;
+    },
     holds: async (task) => Boolean(await ctx.issues.get(task.issue, g.companyId).catch(() => null)),
     async post(task, text) {
       const issue = await ctx.issues.get(task.issue, g.companyId);
@@ -43,38 +53,50 @@ function group(config, companyId, webhookSecret) {
   };
 }
 
+// Every company with a bridge config is one group; the secret that verifies picks it.
+async function groups() {
+  const configs = [];
+  for (const company of await ctx.companies.list({ limit: 1000 })) {
+    const config = await ctx.config.get(company.id).catch(() => null);
+    if (config?.webhookSecret && config.bakersApiKey && config.agentId) configs.push([company.id, config]);
+  }
+  return Promise.all(configs.map(async ([companyId, config]) => group(config, companyId, await secret(config.webhookSecret, companyId))));
+}
+
+// Deliveries, the queue and what was posted live in the plugin's state: they survive a restart.
+const key = (stateKey) => ({ scopeKind: 'instance', stateKey });
+const deps = (gs) => ({
+  groups: gs,
+  now: Date.now,
+  store: { get: (k) => ctx.state.get(key(k)), set: (k, v) => ctx.state.set(key(k), v) },
+  log: (level, message, meta) => ctx.logger[level](message, meta),
+});
+
+async function drainAll() {
+  const gs = await groups();
+  try {
+    await drain(deps(gs));
+  } finally {
+    await Promise.all(gs.map((g) => g.close()));
+  }
+}
+const drainNow = () => drainAll().catch((e) => ctx.logger.warn(`bakers drain failed: ${e.message}`));
+
 const plugin = definePlugin({
   async setup(c) {
     ctx = c;
+    // Picks up what a failed post, or a restart, left in the queue.
+    ctx.jobs.register('drain', drainNow);
   },
   async onHealth() {
     return { status: 'ok', message: 'bakers-bridge ready' };
   },
   async onWebhook(input) {
-    // Every company with a bridge config is one group; the secret that verifies picks it.
-    const configs = [];
-    for (const company of await ctx.companies.list({ limit: 1000 })) {
-      const config = await ctx.config.get(company.id).catch(() => null);
-      if (config?.webhookSecret && config.bakersApiKey && config.agentId) configs.push([company.id, config]);
-    }
-    const groups = await Promise.all(
-      configs.map(async ([companyId, config]) =>
-        group(config, companyId, await secret(config.webhookSecret, companyId)),
-      ),
-    );
-    const scope = (id) => ({ scopeKind: 'instance', stateKey: `event:${id}` });
-    try {
-      const res = await deliver(input, {
-        groups,
-        now: Date.now,
-        seen: { has: async (id) => (await ctx.state.get(scope(id))) !== null, add: (id) => ctx.state.set(scope(id), true) },
-        log: (level, message, meta) => ctx.logger[level](message, meta),
-      });
-      // The host answers a thrown delivery with 502 and records it as failed.
-      if (res.status !== 200) throw new Error(`${res.status} ${res.reason}`);
-    } finally {
-      await Promise.all(groups.map((g) => g.close()));
-    }
+    const res = await deliver(input, deps(await groups()));
+    // The host answers a thrown delivery with 502 and records it as failed; bakers.build retries it.
+    if (res.status !== 200) throw new Error(`${res.status} ${res.reason}`);
+    // Answered at once: bakers.build gives up after 5 s. The read and the posts follow.
+    void drainNow();
   },
 });
 
