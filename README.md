@@ -96,7 +96,8 @@ task. `tests/e2e/operator.test.mjs` checks this.
 | `PAPERCLIP_PUBLIC_URL` | the URL people open Paperclip at; also the base of every task link the bridge recognises. |
 | `PAPERCLIP_PORT` | the host port, default 3100. |
 | `PAPERCLIP_ALLOWED_HOSTNAMES` | further hostnames Paperclip accepts, comma-separated; `paperclip` (the compose network name) is always added. |
-| `ANTHROPIC_API_KEY` | an Anthropic API key for the PM agents' Claude CLI. |
+| `ANTHROPIC_API_KEY` | an Anthropic API key for the PM agents' Claude CLI; or leave it empty and set the next one. |
+| `CLAUDE_CODE_OAUTH_TOKEN` | a Claude subscription token: run `claude setup-token` and copy the token it prints. |
 | `PM_CLONES_DIR` | the host directory with the groups' read-only project clones, default `./data/clones`. |
 | `DEMO_BAKERS_API_KEY` | demo only: any random string, `openssl rand -hex 16`; the demo service account's key. |
 | `BAKERS_WEBHOOK_SECRET` | demo only: any random string, `openssl rand -hex 32`; the demo webhook's signing secret. |
@@ -138,6 +139,6 @@ docker compose --profile demo up -d
 pnpm test:e2e                            # against Paperclip and bakers-demo
 ```
 
-`tests/e2e/agent.test.mjs` runs the live PM agent and needs `ANTHROPIC_API_KEY`; without it
-those tests are skipped. CI (`.github/workflows/test.yml`) runs both suites, the live ones only
+`tests/e2e/agent.test.mjs` runs the live PM agent and needs `ANTHROPIC_API_KEY` or
+`CLAUDE_CODE_OAUTH_TOKEN`; without either, those tests are skipped. CI (`.github/workflows/test.yml`) runs both suites, the live ones only
 when the repository secret `ANTHROPIC_API_KEY` is set.

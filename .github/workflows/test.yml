@@ -31,9 +31,14 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Throwaway secrets for this run
+      - name: Throwaway secrets for this run, and the model credential if the repository has one
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
           {
+            echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"
+            echo "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN"
             echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)"
             echo "PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=$(openssl rand -hex 32)"
             echo "DEMO_BAKERS_API_KEY=$(openssl rand -hex 16)"
@@ -43,9 +48,7 @@ jobs:
       - run: docker compose --profile demo up -d
       - name: Wait for Paperclip
         run: for i in $(seq 1 100); do curl -sf localhost:3100/api/health && exit 0; sleep 3; done; docker compose logs; exit 1
-      # The live PM agent's tests (tests/e2e/agent.test.mjs) run only with this secret; without it they are skipped.
+      # The live PM agent's tests (tests/e2e/agent.test.mjs) read the credential from .env; without one they are skipped.
       - run: pnpm test:e2e
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       - if: failure()
         run: docker compose logs --tail 300

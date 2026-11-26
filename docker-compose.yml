@@ -21,6 +21,8 @@ services:
       # Requesters never see or change how agents run.
       PAPERCLIP_HIDDEN_SETTINGS: instance.adapters
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      # Or a Claude subscription token from `claude setup-token`.
+      CLAUDE_CODE_OAUTH_TOKEN: "${CLAUDE_CODE_OAUTH_TOKEN:-}"
     volumes:
       - paperclip-data:/paperclip
       # This repository: the bakers-bridge plugin and the PM agent's instructions, config and skills.

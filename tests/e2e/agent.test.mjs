@@ -1,5 +1,5 @@
 // AC-2, AC-3, AC-4, AC-6, AC-7 with the live PM agent: these need a model, so they run only
-// with ANTHROPIC_API_KEY set (in .env or CI); without it they are skipped, never passed.
+// with ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN set (in .env or CI); without it they are skipped, never passed.
 // The requester's side is played by this test; the model's wording varies, so each check reads
 // bakers-demo's state, not the agent's sentences.
 import { execFileSync } from 'node:child_process';
@@ -8,7 +8,7 @@ import { connect } from '../../bakers-bridge/bakers-client.mjs';
 import { DEMO, ok } from './paperclip.mjs';
 import { comments, env, group, requester, until } from './fixture.mjs';
 
-const live = Boolean(env.ANTHROPIC_API_KEY);
+const live = Boolean(env.ANTHROPIC_API_KEY || env.CLAUDE_CODE_OAUTH_TOKEN);
 const demoState = async () => (await fetch(`${DEMO}/state`)).json();
 
 let g, rita;
