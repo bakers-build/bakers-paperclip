@@ -49,12 +49,11 @@ beforeEach(() => {
     log: (level, message, meta) => logs.push({ level, message, meta }),
     groups: [
       // Another group first: its secret does not verify, so its key never reads this group's tickets.
-      { secret: 'other-group-secret', readTicket: async () => tickets['t-1'], readComment: async () => null, post: async () => posts.push('wrong group') },
+      { secret: 'other-group-secret', readTicket: async () => tickets['t-1'], post: async () => posts.push('wrong group') },
       {
         secret: SECRET,
         readTicket: async (uuid) => tickets[uuid] ?? null,
-        readComment: async (_ticket, id) => comments[id] ?? null,
-        post: async (task, text) => void posts.push({ task, text }),
+            post: async (task, text) => void posts.push({ task, text }),
       },
     ],
   };
@@ -140,25 +139,11 @@ describe('deliver: texts', () => {
     expect(await textOf(event('ticket.state_changed', { from: 'plan', to: 'working' }))).toEqual(['Die Arbeit daran hat begonnen.']);
   });
 
-  it('done adds where to test from the latest summary and the ticket link', async () => {
-    tickets['t-1'] = ticket({
-      state: 'done',
-      comments: [
-        { id: 'c1', type: 'summary', created: '2026-11-25T10:00:00Z', body: '### 🧪 Manual review\nOld.' },
-        { id: 'c2', type: 'summary', created: '2026-11-26T09:00:00Z', body: '### 🎯 Outcome\nDone.\n\n### 🧪 Manual review\nOpen https://shop.preview.example.org/cart and redeem a voucher.\n`git log a..b`\n\n### ➡️ Next action\nMerge.' },
-      ],
-    });
-    const [text] = await textOf(event('ticket.state_changed', { from: 'review', to: 'done' }));
-    expect(text).toBe(
-      'Das ist fertig und bereit zum Ausprobieren.\n\nWo und wie du es testen kannst:\n\nOpen https://shop.preview.example.org/cart and redeem a voucher.\n\n' +
-        '[SHOP-7 · Gutscheine im Checkout](https://app.bakers.build/acme/ticket/shop-7)',
-    );
-  });
-
-  it('done without a manual review says the ticket does not say where to test yet', async () => {
-    tickets['t-1'] = ticket({ state: 'done' });
-    const [text] = await textOf(event('ticket.state_changed', { from: 'review', to: 'done' }));
-    expect(text).toContain('Im Ticket steht noch nicht, wo oder wie du das testen kannst.');
+  it('done says it is ready to try and links the ticket, nothing from the summaries', async () => {
+    tickets['t-1'] = ticket({ state: 'done', comments: [{ id: 'c2', type: 'summary', created: '2026-11-26T09:00:00Z', body: '### 🧪 Manual review\nOpen https://shop.example.org/cart.' }] });
+    expect(await textOf(event('ticket.state_changed', { from: 'review', to: 'done' }))).toEqual([
+      'Das ist fertig und bereit zum Ausprobieren.\n\n[SHOP-7 · Gutscheine im Checkout](https://app.bakers.build/acme/ticket/shop-7)',
+    ]);
   });
 
   it('a run start says what happens now', async () => {
@@ -183,27 +168,9 @@ describe('deliver: texts', () => {
     expect(await textOf(event('run.finished', { state: 'done', state_at_start: 'working' }))).toEqual([]);
   });
 
-  it('a new summary posts its first two plain Outcome sentences, without identifiers or code', async () => {
-    comments.s1 = {
-      id: 's1',
-      type: 'summary',
-      body: '### 🎯 Outcome\nVouchers can now be redeemed in the checkout. See SHOP-7 for details. The `cart` total updates.\n\n### ✅ Success\nAll green.',
-    };
-    expect(await textOf(event('comment.created', { comment_id: 's1', type: 'summary' }))).toEqual(['Vouchers can now be redeemed in the checkout.']);
-  });
-
-  it('a new summary posts no link of its Manual review: agent text reaches the requester only as plain sentences', async () => {
-    comments.s2 = {
-      id: 's2',
-      type: 'summary',
-      body: '### 🎯 Outcome\nReady.\n\n### 🧪 Manual review\n[Checkout](https://shop.preview.example.org/cart) and https://evil.example.com/x.',
-    };
-    expect(await textOf(event('comment.created', { comment_id: 's2', type: 'summary' }))).toEqual(['Ready.']);
-  });
-
-  it('a comment that is no summary posts nothing', async () => {
-    comments.n1 = { id: 'n1', type: 'plan', body: '### 🎯 Outcome\nSecret plan.' };
-    expect(await textOf(event('comment.created', { comment_id: 'n1', type: 'plan' }))).toEqual([]);
+  it('a new comment, a summary too, posts nothing: summaries are written for developers', async () => {
+    comments.s1 = { id: 's1', type: 'summary', body: '### 🎯 Outcome\nVouchers can now be redeemed.' };
+    expect(await textOf(event('comment.created', { comment_id: 's1', type: 'summary' }))).toEqual([]);
   });
 
   it('a question posts its lead-in and the note', async () => {
@@ -236,9 +203,9 @@ describe('deliver: texts', () => {
     expect(await textOf(event('ticket.labels_changed', { added: ['Question'], removed: [] }))).toEqual([]);
   });
 
-  it('a new preview link is posted with its title', async () => {
-    expect(await textOf(event('ticket.link_added', { uri: 'https://shop-7.designbook.example.org/', title: 'Design' }))).toEqual([
-      'Es gibt etwas zum Ansehen: Design\nhttps://shop-7.designbook.example.org/',
+  it('a new preview link is posted behind the lead-in, without its agent-written title', async () => {
+    expect(await textOf(event('ticket.link_added', { uri: 'https://shop-7.designbook.example.org/', title: 'Design SHOP-7' }))).toEqual([
+      'Es gibt etwas zum Ansehen:\nhttps://shop-7.designbook.example.org/',
     ]);
   });
 

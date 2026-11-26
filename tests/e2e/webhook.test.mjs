@@ -14,19 +14,19 @@ const event = (type, data, ticket = linked.ticket) => bakersEvent(type, data, ti
 
 it('posts a state change into the task, as the PM agent, once even when redelivered', async () => {
   const ev = event('ticket.state_changed', { from: 'plan', to: 'working' });
-  expect(await deliver(ev)).toBe(200);
-  expect(await deliver(ev)).toBe(200);
+  expect(await deliver(ev, g.signing)).toBe(200);
+  expect(await deliver(ev, g.signing)).toBe(200);
   const posted = await until(async () => (await comments(g.admin, linked.issue)).filter((c) => c.body === 'Die Arbeit daran hat begonnen.'));
   expect(posted).toHaveLength(1);
   expect(posted[0].authorAgentId).toBe(g.agent.id);
 });
 
 it('refuses a wrong signature and records the failed delivery', async () => {
-  expect(await deliver(event('run.started', { state_at_start: 'working' }), { secret: 'not-the-secret' })).toBe(502);
+  expect(await deliver(event('run.started', { state_at_start: 'working' }), 'not-the-secret')).toBe(502);
   const all = await comments(g.admin, linked.issue);
   expect(all.some((c) => c.body === 'Wir arbeiten jetzt daran.')).toBe(false);
 });
 
 it('refuses an event for an unknown ticket', async () => {
-  expect(await deliver(event('run.started', { state_at_start: 'working' }, { id: randomUUID(), identifier: 'DEMO-999' }))).toBe(502);
+  expect(await deliver(event('run.started', { state_at_start: 'working' }, { id: randomUUID(), identifier: 'DEMO-999' }), g.signing)).toBe(502);
 });

@@ -15,10 +15,12 @@ $get = fn (string $type, array $props, array $more = []) => $one($type, $props) 
 $admin = \Drupal\user\Entity\User::load(1);
 $ws = current($etm->getStorage('bb_workspace')->loadMultiple());
 $writer = \Drupal::service('bb_core.membership_writer');
-$member = function ($group, $user) use ($writer) {
+// A member with a rank: a Guest has no access to the team's projects (a conductor's owner needs it).
+$member = function ($group, $user, string $role) use ($writer) {
   if (!$writer->membershipOf($group, (int) $user->id())) {
     $writer->add($group, $user->id());
   }
+  $writer->writeRole($group, (int) $user->id(), $role, \Drupal\bb_core\Members\MemberItemBuilder::assignableRoles($group));
 };
 
 $demo = $get('bb_group', ['name' => 'Demo', 'workspace_id' => $ws->id()]);
@@ -30,10 +32,9 @@ $user = fn (string $mail, string $name) => $one('user', ['mail' => $mail]) ?: $m
 $rita = $user('requester@example.org', 'Rita Requester');
 $devon = $user('developer@example.org', 'Devon Developer');
 foreach ([$rita, $devon] as $u) {
-  $member($ws, $u);
+  $member($ws, $u, 'contributor');
+  $member($team, $u, 'member');
 }
-$member($team, $devon);
-$member($team, $rita);
 
 $project = fn (string $key, string $name, string $description, $group, $t) => $one('bb_project', ['key' => $key])
   ?: $make('bb_project', ['key' => $key, 'name' => $name, 'description' => $description, 'group_id' => $group->id(), 'teams' => [$t->id()], 'owner_user_id' => $devon->id(), 'next_number' => 1]);

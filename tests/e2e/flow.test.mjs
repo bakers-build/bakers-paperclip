@@ -9,7 +9,7 @@ it('request ticket → run → question → answer → review → done → previ
   const g = await group();
   const { issue, ticket, bakers } = await linkedTicket(g);
   const call = (name, args) => tool(bakers, name, { ticket: ticket.id, ...args });
-  const send = async (type, data) => expect(await deliver(event(type, data, ticket))).toBe(200);
+  const send = async (type, data) => expect(await deliver(event(type, data, ticket), g.signing)).toBe(200);
   const moveTo = async (from, to) => {
     expect(await call('ticket_transition', { state: to })).toMatchObject({ state: to });
     await send('ticket.state_changed', { from, to });
@@ -52,13 +52,11 @@ it('request ticket → run → question → answer → review → done → previ
   expect(bodies).toEqual([
     'Die Arbeit daran hat begonnen.',
     'Wir arbeiten jetzt daran.',
-    'Die Umsetzung hat begonnen. Für den nächsten Schritt brauchen wir eine Entscheidung.',
     `${ticket.identifier} · „Gutscheine im Checkout“ hat eine Frage:\n\nSoll die Änderung für alle Kunden gelten oder nur für angemeldete?`,
     'Wir arbeiten jetzt daran.',
     'Die Arbeit ist fertig und wird geprüft.',
     'Wir prüfen die Arbeit.',
-    'Die Änderung ist fertig und geprüft.',
-    `Es gibt etwas zum Ansehen: Design\n${design}`,
-    expect.stringMatching(/^Das ist fertig und bereit zum Ausprobieren\.\n\nWo und wie du es testen kannst:\n\nÖffne \[die Vorschau\]/),
+    `Es gibt etwas zum Ansehen:\n${design}`,
+    `Das ist fertig und bereit zum Ausprobieren.\n\n[${ticket.identifier} · Gutscheine im Checkout](${ticket.url})`,
   ]);
 });

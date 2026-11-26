@@ -1,6 +1,8 @@
 // Pure core of the bakers-bridge: one bakers.build webhook delivery in, the Hermes texts it
 // calls for posted into the Paperclip task of its ticket. Every I/O comes through `deps`.
-// Text rules are ported from hermes-bot ebfbc9e (poller/updates.mjs, questions.mjs, diff.mjs).
+// Only fixed texts, the question's note and links reach the task: summaries are written for
+// developers, so nothing from them is passed on (decided 2026-11-26).
+// Rules are ported from hermes-bot ebfbc9e (poller/updates.mjs, questions.mjs, diff.mjs).
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
@@ -8,13 +10,6 @@ export const QUESTION_LABEL = 'Question';
 export const TECHNICAL_PROBLEM_LABEL = 'technical problem';
 const MAX_SKEW_MS = 5 * 60 * 1000;
 const ENDED = ['done', 'failed', 'expired', 'cancelled'];
-
-// Words of the tool, not of the requester (updates.mjs INTERNAL).
-const INTERNAL = [
-  /`|\b[A-Z][A-Z0-9]*-\d+\b|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/,
-  /\b(?:qualification|matt|superpowers|deploy-and-release|opus|sonnet|haiku|fable|claude|codex)\b/i,
-];
-const plain = (s) => s.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\*\*|__|(?<!\w)[*_]|[*_](?!\w)/g, '').trim();
 
 const header = (headers, name) => {
   const v = headers[name] ?? headers[name.toLowerCase()];
@@ -30,44 +25,6 @@ export function verify(headers, rawBody, secret, now) {
   if (!timingSafeEqual(Buffer.from(sig, 'hex'), expected)) return 'signature mismatch';
   if (!Number.isFinite(at) || Math.abs(now - at) > MAX_SKEW_MS) return 'timestamp outside ±5 min';
   return null;
-}
-
-/** The lines of the first section whose heading matches `title` (diff.mjs section). */
-export function section(markdown, title) {
-  const lines = (markdown ?? '').split('\n');
-  const start = lines.findIndex((l) => /^#{1,6}\s/.test(l) && title.test(l));
-  if (start < 0) return [];
-  const level = lines[start].match(/^#+/)[0].length;
-  const end = lines.findIndex((l, i) => i > start && /^#{1,6}\s/.test(l) && l.match(/^#+/)[0].length <= level);
-  return lines.slice(start + 1, end < 0 ? undefined : end);
-}
-
-/** The plain sentences among the first two of a summary's Outcome section. */
-export function outcome(markdown) {
-  const text = section(markdown, /outcome/i)
-    .map((l) => l.replace(/^\s*(?:[-*+]|\d+\.)\s+/, ''))
-    .join(' ')
-    .trim();
-  return text
-    .split(/(?<=[.!?])\s+/)
-    .slice(0, 2)
-    .filter((s) => s && !INTERNAL.some((r) => r.test(s)))
-    .map(plain);
-}
-
-// The customer-facing part of a summary's Manual review: no login links, MRs, pipelines or code lines.
-function manualReview(markdown) {
-  const kept = [];
-  let inCode = false;
-  for (const line of section(markdown, /manual review/i)) {
-    if (/^\s*(```|~~~)/.test(line)) {
-      inCode = !inCode;
-      continue;
-    }
-    if (inCode || /\/user\/(reset|login)\b|\/-\/merge_requests\/|\/pull\/\d|\/-\/pipelines\b/.test(line) || /^\s*(?:[-*]\s+)?`[^`]+`\s*$/.test(line)) continue;
-    kept.push(line);
-  }
-  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 // A link of kind design or ddev (updates.mjs preview).
@@ -96,13 +53,9 @@ export async function texts(ev, t, deps) {
   const open = labels.includes(QUESTION_LABEL) || labels.includes(TECHNICAL_PROBLEM_LABEL);
   switch (ev.type) {
     case 'ticket.state_changed': {
-      let text = m.states[d.to];
+      const text = m.states[d.to];
       if (!text) return [];
-      if (d.to === 'done') {
-        const hint = manualReview(newest(t.comments, (c) => c.type === 'summary')?.body ?? '');
-        text += (hint ? `\n\n${m.testHint}\n\n${hint}` : `\n\n${m.noTestHint}`) + footer(t, m);
-      }
-      return [text];
+      return [d.to === 'done' ? text + footer(t, m) : text];
     }
     case 'run.started':
       return m.runStart[d.state_at_start] ? [m.runStart[d.state_at_start]] : [];
@@ -112,16 +65,6 @@ export async function texts(ev, t, deps) {
       if (d.state === 'done') return [m.runWaiting];
       // shortcut: Hermes waited one poll for a late label or freeze; here the ticket read decides at once.
       return t.frozen ? [] : [m.runPaused];
-    }
-    case 'comment.created': {
-      if (d.type !== 'summary') return [];
-      const c = await deps.readComment(t.id, d.comment_id);
-      if (!c || c.type !== 'summary') return [];
-      const out = [];
-      const sentences = outcome(c.body);
-      // Only plain sentences: a summary's links are written for developers and stay in bakers.build.
-      if (sentences.length) out.push(sentences.join(' '));
-      return out;
     }
     case 'ticket.labels_changed': {
       if (!t.frozen || !open) return [];
@@ -134,8 +77,7 @@ export async function texts(ev, t, deps) {
     }
     case 'ticket.link_added': {
       if (!d.uri || !isPreview(d.uri)) return [];
-      const title = INTERNAL.some((r) => r.test(d.title ?? '')) ? '' : plain(d.title ?? '');
-      return [`${m.previewLead} ${title}`.trim() + `\n${d.uri}`];
+      return [`${m.previewLead}\n${d.uri}`];
     }
     default:
       return [];
@@ -157,7 +99,7 @@ export function tasksOf(t) {
 
 /**
  * One webhook delivery. `deps.groups` holds one entry per bakers.build group: its webhook
- * `secret` and its own `readTicket`, `readComment` and `post`. The secret that verifies the
+ * `secret` and its own `readTicket`, `holds` and `post`. The secret that verifies the
  * signature picks the group, so a delivery reads only its own group's tickets.
  * Returns {status, reason?}: 401 bad signature or stale, 400 no event, 404 unknown ticket or
  * no task, 200 handled (also a repeated event id, posted once).

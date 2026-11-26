@@ -31,7 +31,6 @@ function group(config, companyId, secret, key) {
     secret,
     messages: MESSAGES[config.language ?? 'de'],
     readTicket: read,
-    readComment: async (uuid, id) => (await read(uuid))?.comments?.find((c) => c.id === id) ?? null,
     holds: async (task) => Boolean(await ctx.issues.get(task.issue, g.companyId).catch(() => null)),
     async post(task, text) {
       const issue = await ctx.issues.get(task.issue, g.companyId);

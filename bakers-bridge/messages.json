@@ -9,8 +9,6 @@
       "done": "Das ist fertig und bereit zum Ausprobieren.",
       "cancelled": "Diese Anfrage wurde ohne Änderung geschlossen."
     },
-    "testHint": "Wo und wie du es testen kannst:",
-    "noTestHint": "Im Ticket steht noch nicht, wo oder wie du das testen kannst.",
     "questionLead": "{identifier} · „{title}“ hat eine Frage:",
     "technicalProblemLead": "Die Arbeit am Ticket „{title}“ hängt an einem technischen Problem, das keytec lösen muss:",
     "runStart": {
@@ -34,8 +32,6 @@
       "done": "This is finished and ready for you to try.",
       "cancelled": "This request was closed without a change."
     },
-    "testHint": "Where and how to test:",
-    "noTestHint": "The ticket does not say yet where or how to test this.",
     "questionLead": "{identifier} · \"{title}\" has a question:",
     "technicalProblemLead": "The work on the \"{title}\" ticket is stuck on a technical problem that keytec has to solve:",
     "runStart": {

@@ -43,7 +43,7 @@ describe('adapter config', () => {
   });
 
   it('allows exactly the bakers allowlist, the clone reader’s read tools and the task tools', () => {
-    expect(flag('--allowedTools').split(',').sort()).toEqual(['Skill', ...BAKERS, ...CODE, ...PAPERCLIP].sort());
+    expect(flag('--allowedTools').split(',').sort()).toEqual(['Skill', ...BAKERS, ...CODE, ...PAPERCLIP, 'mcp__whois__whois'].sort());
   });
 
   it('denies the clone reader’s write tools outright', () => {
@@ -56,8 +56,12 @@ describe('adapter config', () => {
 });
 
 describe('MCP config', () => {
-  it('has exactly the bakers, clone reader and Paperclip servers', () => {
-    expect(Object.keys(mcp.mcpServers).sort()).toEqual(['bakers', 'code', 'paperclip']);
+  it('has exactly the bakers, clone reader, Paperclip and whois servers', () => {
+    expect(Object.keys(mcp.mcpServers).sort()).toEqual(['bakers', 'code', 'paperclip', 'whois']);
+  });
+
+  it('runs whois from this repository, with the run’s env only', () => {
+    expect(mcp.mcpServers.whois).toEqual({ type: 'stdio', command: 'node', args: ['/opt/bakers-paperclip/agent/whois-mcp.mjs'] });
   });
 
   it('reaches bakers.build only over its MCP endpoint with a bearer key from the env', () => {

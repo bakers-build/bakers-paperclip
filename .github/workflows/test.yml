@@ -41,7 +41,6 @@ jobs:
             echo "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN"
             echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)"
             echo "PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=$(openssl rand -hex 32)"
-            echo "BAKERS_WEBHOOK_SECRET=$(openssl rand -hex 32)"
             echo "BAKERS_DB_PASSWORD=$(openssl rand -hex 16)"
             echo "BAKERS_DB_ROOT_PASSWORD=$(openssl rand -hex 16)"
             echo "BAKERS_HASH_SALT=$(openssl rand -hex 32)"

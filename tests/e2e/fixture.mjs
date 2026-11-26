@@ -50,7 +50,9 @@ export async function group(name = `Group ${randomUUID().slice(0, 8)}`) {
   const a = await instance();
   const company = ok(await a.api('POST', '/api/companies', { name }));
   const secret = async (key, value) => ok(await a.api('POST', `/api/companies/${company.id}/secrets`, { name: key, value })).id;
-  const webhookSecret = await secret('BAKERS_WEBHOOK_SECRET', env.BAKERS_WEBHOOK_SECRET);
+  // Each group signs with a secret of its own, as each bakers.build group's webhook will.
+  const signing = randomUUID();
+  const webhookSecret = await secret('BAKERS_WEBHOOK_SECRET', signing);
   const bakersKey = await secret('BAKERS_API_KEY', env.BAKERS_E2E_API_KEY);
   const adapterConfig = JSON.parse(file('agent/adapter-config.json'));
   adapterConfig.env.BAKERS_API_KEY.secretId = bakersKey;
@@ -82,7 +84,7 @@ export async function group(name = `Group ${randomUUID().slice(0, 8)}`) {
   for (const [key, name] of [['DEMO', 'Demo Shop'], ['DEMO2', 'Demo Blog']]) {
     projects[key] = ok(await a.api('POST', `/api/companies/${company.id}/projects`, { name, description: `bakers.build: ${key}`, status: 'in_progress' }));
   }
-  return { admin: a, company, agent, projects };
+  return { admin: a, company, agent, projects, signing };
 }
 
 /** A task in the company and a demo ticket that links it, as the PM agent leaves them. */
@@ -103,8 +105,8 @@ export async function comments(a, issue) {
 /** A bakers.build event about `ticket`, as its webhook will send it. */
 export const event = (type, data, ticket) => ({ event_id: randomUUID(), type, occurred_at: new Date().toISOString(), ticket: { uuid: ticket.id, identifier: ticket.identifier }, data });
 
-/** POSTs a signed event straight to the bridge, as bakers.build would; returns the HTTP status. */
-export async function deliver(event, { secret = env.BAKERS_WEBHOOK_SECRET } = {}) {
+/** POSTs an event signed with `secret` (a group's `signing`) straight to the bridge, as bakers.build would; returns the HTTP status. */
+export async function deliver(event, secret) {
   const body = JSON.stringify(event);
   const res = await fetch(WEBHOOK, {
     method: 'POST',

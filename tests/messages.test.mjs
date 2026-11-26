@@ -6,8 +6,9 @@ const read = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), '
 const hermes = read('./fixtures/hermes-poller-messages-ebfbc9e.json');
 const bridge = read('../bakers-bridge/messages.json');
 
-// The poller-only texts the spec drops (Q4): the heartbeat, the week-silent close and the reopened channel.
-const DROPPED = ['stillWorking', 'abandoned', 'reopened'];
+// The poller-only texts the spec drops (Q4): the heartbeat, the week-silent close and the reopened
+// channel; and the test hints, as the bridge passes nothing from summaries on (decided 2026-11-26).
+const DROPPED = ['stillWorking', 'abandoned', 'reopened', 'testHint', 'noTestHint'];
 
 describe('fixed texts', () => {
   it.each(['de', 'en'])('%s keeps every Hermes text word for word, minus the dropped ones', (lang) => {

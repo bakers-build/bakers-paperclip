@@ -23,6 +23,13 @@
         "-y",
         "@paperclipai/mcp-server@2026.1117.0"
       ]
+    },
+    "whois": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/opt/bakers-paperclip/agent/whois-mcp.mjs"
+      ]
     }
   }
 }

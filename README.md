@@ -104,7 +104,6 @@ task. `tests/e2e/operator.test.mjs` checks this.
 | `BAKERS_DB_PASSWORD`, `BAKERS_DB_ROOT_PASSWORD` | local bakers.build only: `openssl rand -hex 16` each. |
 | `BAKERS_HASH_SALT` | local bakers.build only: `openssl rand -hex 32`. |
 | `BAKERS_ADMIN_EMAIL` | local bakers.build only: its first admin; any address, the mail goes to Mailpit. |
-| `BAKERS_WEBHOOK_SECRET` | tests only: `openssl rand -hex 32`; signs the events the e2e tests send in bakers.build's place. |
 | `BAKERS_E2E_API_KEY` | tests only: written by `pnpm bakers:seed`, the seeded service account's key (`<client_id>:<secret>`). |
 
 Per group, in Paperclip (see *Set up a group*): the bakers.build service account's API key and
@@ -124,9 +123,10 @@ side should build against it or the bridge adapts.
 - The bridge reads the ticket itself with the group's key, finds the task among the ticket's
   links ending in `/<prefix>/issues/<PREFIX-n>`, the one its company holds (else its parent's,
   posting behind the sub-ticket's identifier), and posts each text once per `event_id`.
-- A summary reaches the task as its first plain *Outcome* sentences only; its links are written
-  for developers and stay in bakers.build. Preview links reach the task as ticket links
-  (designbook, DDEV).
+- Only fixed texts, a question's note and links reach the task: state lines (done with the
+  ticket link), run lines, the lead-in of a question or technical problem with its note, and a
+  new preview link (designbook, DDEV). Summaries are written for developers, so `comment.created`
+  posts nothing; what came out and where to test are on the ticket, or the PM agent tells.
 - Answers: 200 handled or a repeat; a wrong signature, an unknown ticket or a ticket without a
   task is refused, logged, and recorded by Paperclip as a failed delivery with status 502
   (Paperclip answers every refusal of a plugin webhook with 502).
@@ -134,7 +134,8 @@ side should build against it or the bridge adapts.
   unreachable longer than bakers.build retries (24 h). A catch-up on start is a follow-up.
 
 What the Hermes poller said and the bridge does not: the *still working* heartbeat (no event
-carries it) and closing a request that stays silent for a week. Both are dropped.
+carries it), closing a request that stays silent for a week, and the sentences it took from
+summaries (*Outcome*, *Manual review*). All are dropped.
 
 ## Tests
 
