@@ -9,7 +9,7 @@
   "scripts": {
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.mjs",
-    "skills": "node scripts/collect-skills.mjs"
+    "skills": "sh scripts/skills.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
