@@ -1,12 +1,143 @@
 # bakers-paperclip
 
 [Paperclip](https://github.com/paperclipai/paperclip) as the place where a customer hands a
-request to [bakers.build](https://bakers.build): a PM agent specifies the request with its
-requester and creates the bakers ticket, and bakers.build reports the ticket's progress back
-through a webhook.
-
-Nothing is built yet. The first slice is ticket PAPERCLIP-1.
+request to [bakers.build](https://bakers.build). One Paperclip company per bakers.build group,
+one PM agent per company serving all of the group's projects. The agent specifies a request
+with its requester and creates the bakers ticket; bakers.build reports the ticket's progress
+back through a signed webhook, which the `bakers-bridge` plugin posts into the request's task.
 
 This repository is public: no secret, token or customer name belongs in it.
 
+| Path | What it is |
+|---|---|
+| `docker-compose.yml` | Paperclip v2026.1117.0 (pinned by digest) with this repository mounted read-only; profile `demo` adds `bakers-demo` |
+| `bakers-bridge/` | Paperclip plugin: receives the bakers webhook, posts Hermes' fixed texts into the task as the PM agent |
+| `agent/AGENTS.md` | the PM agent's instructions (Hermes' persona, adapted to Paperclip tasks and several projects) |
+| `agent/adapter-config.json` | the PM agent's `claude_local` adapter config: Claude CLI with every built-in tool off but the skill loader |
+| `agent/mcp.json` | the agent's only tools: bakers.build MCP, a read-only code reader, Paperclip's task tools |
+| `scripts/skills.sh` | `pnpm skills` builds `agent/skills/` (gitignored) from pinned sources |
+| `demo/` | `bakers-demo`: a bakers.build stand-in with a simulated conductor, for the demo and e2e |
+
 Ticket work runs through [WORKFLOW.md](WORKFLOW.md).
+
+## Start
+
+```sh
+cp .env.example .env   # fill in the values, see Configuration
+mkdir -p data/clones
+docker compose up -d   # Paperclip on http://localhost:3100
+```
+
+Open Paperclip, create the first account and choose *Claim this instance*. Then install the
+plugin once, as the instance admin: *Settings › Plugins › Install from local path*
+`/opt/bakers-paperclip/bakers-bridge`, or
+
+```sh
+curl -X POST http://localhost:3100/api/plugins/install -H 'content-type: application/json' \
+  -H 'origin: http://localhost:3100' -b <your session cookie> \
+  -d '{"packageName":"/opt/bakers-paperclip/bakers-bridge","isLocalPath":true}'
+```
+
+### Demo
+
+`docker compose --profile demo up -d` adds `bakers-demo` on http://localhost:8090: a bakers.build
+stand-in with the group *demo* (projects `DEMO` and `DEMO2`, one conductor on `DEMO`, and
+`FOREIGN`, a project of another group its key cannot read), the users
+`requester@example.org` and `developer@example.org`, and a simulated conductor. When a ticket
+reaches `working` with that conductor, it plays a scripted run: run start, a summary, a
+question (`Question`, frozen); after the answer: review, done, a preview link. Each step sends a
+signed webhook event to the bridge. `GET /state` shows everything, `POST /emit
+{"type","ticket","data"}` sends one event. Set up a group as below with `BAKERS_URL`
+`http://bakers-demo:8090` and the demo's key and secret from `.env`; `tests/e2e/fixture.mjs`
+does exactly that.
+
+## Set up a group
+
+Once per bakers.build group, as the instance admin:
+
+1. **Company.** Create a company named after the group.
+2. **Secrets** (*Company › Secrets*): `BAKERS_API_KEY`, the API key of the group's bakers.build
+   service account, a member of exactly the group's projects; `BAKERS_WEBHOOK_SECRET`, the
+   signing secret of the group's bakers.build webhook.
+3. **PM agent.** Create an agent with adapter `claude_local` and runner `legacy` (Paperclip's
+   own runner refuses `extraArgs`). Paste `agent/adapter-config.json` as its adapter config and
+   set `env.BAKERS_API_KEY.secretId` to the secret's ID and `env.BAKERS_URL` to the bakers.build
+   URL. Give it `agent/AGENTS.md` as its instructions and fill in the three lines of its
+   *Host context* section: the Paperclip URL, the company's language (`de` or `en`) and the
+   keys of the group's bakers.build projects. bakers.build has no tool that lists a group's
+   projects, so this list is the agent's only source.
+4. **Skills.** `pnpm skills`, then import every folder of `agent/skills/` as a company skill
+   and assign them to the PM agent.
+5. **Code context.** Put read-only, secret-free clones of the group's projects under
+   `PM_CLONES_DIR/<project key>`; the agent reads them through the code reader at `/clones`.
+6. **Bridge** (*Settings › Plugins › bakers-bridge*, for this company): `bakersUrl`,
+   `paperclipUrl` (= `PAPERCLIP_PUBLIC_URL`), `language`, `previewZones` (the DNS zones whose
+   one-label hosts are preview links, comma-separated), `agentId` (the PM agent),
+   `webhookSecret` and `bakersApiKey` (the two secrets).
+7. **Webhook.** Register `<PAPERCLIP_PUBLIC_URL>/api/plugins/bakers-bridge/webhooks/bakers`
+   in bakers.build for the group's projects, signed with `BAKERS_WEBHOOK_SECRET`.
+
+### Invite a requester
+
+Invite them to the company as `operator`, then remove every grant (*Company › Members ›
+<member> › Role and grants*: role `operator`, no grants). They then file tasks, follow and
+answer them, and configure nothing: `operator`'s default grants include `agents:configure`,
+with which a requester could turn the PM agent's lock-down off, and `viewer` cannot file a
+task. `tests/e2e/operator.test.mjs` checks this.
+
+## Configuration
+
+`.env` (gitignored; `.env.example` lists the keys):
+
+| Value | Where it comes from |
+|---|---|
+| `BETTER_AUTH_SECRET` | `openssl rand -hex 32`, once; Paperclip's session signing key. Keep it across restarts. |
+| `PAPERCLIP_TOOL_ACTION_SIGNING_SECRET` | `openssl rand -hex 32`, once, separate from the one above; signs approval-gated tool actions. |
+| `PAPERCLIP_PUBLIC_URL` | the URL people open Paperclip at; also the base of every task link the bridge recognises. |
+| `PAPERCLIP_PORT` | the host port, default 3100. |
+| `PAPERCLIP_ALLOWED_HOSTNAMES` | further hostnames Paperclip accepts, comma-separated; `paperclip` (the compose network name) is always added. |
+| `ANTHROPIC_API_KEY` | an Anthropic API key for the PM agents' Claude CLI. |
+| `PM_CLONES_DIR` | the host directory with the groups' read-only project clones, default `./data/clones`. |
+| `DEMO_BAKERS_API_KEY` | demo only: any random string, `openssl rand -hex 16`; the demo service account's key. |
+| `BAKERS_WEBHOOK_SECRET` | demo only: any random string, `openssl rand -hex 32`; the demo webhook's signing secret. |
+| `DEMO_PORT` | demo only: the host port of `bakers-demo`, default 8090. |
+| `DEMO_STEP_MS` | demo only: pause between the simulated conductor's steps, default 2000. |
+
+Per group, in Paperclip (see *Set up a group*): the bakers.build service account's API key and
+the webhook signing secret, both from bakers.build, as company secrets.
+
+## The webhook
+
+bakers.build's webhook is not built yet; the bridge accepts this contract, and the bakers.build
+side should build against it or the bridge adapts.
+
+- `POST` JSON `{event_id, type, occurred_at, ticket: {uuid, identifier, parent_uuid?}, data}`.
+- Types and `data`: `ticket.state_changed {from, to}`, `ticket.labels_changed {added, removed}`,
+  `comment.created {comment_id, type}`, `run.started {state_at_start}`,
+  `run.finished {state, state_at_start}`, `ticket.link_added {uri, title}`.
+- Headers: `X-Bakers-Signature: sha256=<hex HMAC-SHA256 of the raw body>`,
+  `X-Bakers-Timestamp: <unix seconds>`, within ±5 minutes.
+- The bridge reads the ticket itself with the group's key, finds the task from the ticket's
+  link under `PAPERCLIP_PUBLIC_URL` (else its parent's, posting behind the sub-ticket's
+  identifier), and posts each text once per `event_id`.
+- Answers: 200 handled or a repeat; a wrong signature, an unknown ticket or a ticket without a
+  task is refused, logged, and recorded by Paperclip as a failed delivery with status 502
+  (Paperclip answers every refusal of a plugin webhook with 502).
+- Delivery is at least once; there is no poller, so an event is lost when Paperclip stays
+  unreachable longer than bakers.build retries (24 h). A catch-up on start is a follow-up.
+
+What the Hermes poller said and the bridge does not: the *still working* heartbeat (no event
+carries it) and closing a request that stays silent for a week. Both are dropped.
+
+## Tests
+
+```sh
+pnpm install
+pnpm test                                # contract and unit tests
+docker compose --profile demo up -d
+pnpm test:e2e                            # against Paperclip and bakers-demo
+```
+
+`tests/e2e/agent.test.mjs` runs the live PM agent and needs `ANTHROPIC_API_KEY`; without it
+those tests are skipped. CI (`.github/workflows/test.yml`) runs both suites, the live ones only
+when the repository secret `ANTHROPIC_API_KEY` is set.

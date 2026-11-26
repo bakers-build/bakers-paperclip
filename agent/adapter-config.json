@@ -3,12 +3,12 @@
   "dangerouslySkipPermissions": false,
   "extraArgs": [
     "--tools",
-    "",
+    "Skill",
     "--mcp-config",
     "/opt/bakers-paperclip/agent/mcp.json",
     "--strict-mcp-config",
     "--allowedTools",
-    "mcp__bakers__bakers_ticket_create,mcp__bakers__bakers_ticket_read,mcp__bakers__bakers_ticket_search,mcp__bakers__bakers_ticket_update,mcp__bakers__bakers_ticket_transition,mcp__bakers__bakers_ticket_classify,mcp__bakers__bakers_comment_create,mcp__bakers__bakers_conductor_list,mcp__bakers__bakers_user_read,mcp__bakers__bakers_project_read,mcp__code__read_text_file,mcp__code__list_directory,mcp__code__directory_tree,mcp__code__search_files,mcp__code__get_file_info,mcp__paperclip__paperclipGetIssue,mcp__paperclip__paperclipListComments,mcp__paperclip__paperclipAddComment,mcp__paperclip__paperclipUpdateIssue",
+    "Skill,mcp__bakers__bakers_ticket_create,mcp__bakers__bakers_ticket_read,mcp__bakers__bakers_ticket_search,mcp__bakers__bakers_ticket_update,mcp__bakers__bakers_ticket_transition,mcp__bakers__bakers_ticket_classify,mcp__bakers__bakers_comment_create,mcp__bakers__bakers_conductor_list,mcp__bakers__bakers_user_read,mcp__bakers__bakers_project_read,mcp__code__read_text_file,mcp__code__list_directory,mcp__code__directory_tree,mcp__code__search_files,mcp__code__get_file_info,mcp__paperclip__paperclipGetIssue,mcp__paperclip__paperclipListComments,mcp__paperclip__paperclipAddComment,mcp__paperclip__paperclipUpdateIssue",
     "--disallowedTools",
     "mcp__code__write_file,mcp__code__edit_file,mcp__code__create_directory,mcp__code__move_file"
   ],

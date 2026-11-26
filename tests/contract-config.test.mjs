@@ -27,8 +27,9 @@ describe('adapter config', () => {
     expect(adapter.chrome ?? false).toBe(false);
   });
 
-  it('turns every built-in tool off: no shell, file, web or subagent tool', () => {
-    expect(flag('--tools')).toBe('');
+  it('turns every built-in tool off but the skill loader: no shell, file, web or subagent tool', () => {
+    // Skill only loads a skill's instructions (bb-create-ticket and its recipes); it runs nothing.
+    expect(flag('--tools')).toBe('Skill');
     expect(adapter.extraArgs).not.toContain('--dangerously-skip-permissions');
   });
 
@@ -38,7 +39,7 @@ describe('adapter config', () => {
   });
 
   it('allows exactly the bakers allowlist, the clone reader’s read tools and the task tools', () => {
-    expect(flag('--allowedTools').split(',').sort()).toEqual([...BAKERS, ...CODE, ...PAPERCLIP].sort());
+    expect(flag('--allowedTools').split(',').sort()).toEqual(['Skill', ...BAKERS, ...CODE, ...PAPERCLIP].sort());
   });
 
   it('denies the clone reader’s write tools outright', () => {
