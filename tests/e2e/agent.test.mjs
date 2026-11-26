@@ -132,15 +132,18 @@ describe.skipIf(!live)('the live PM agent', () => {
     // Settled in bakers.build before the requester answers in the task.
     await tool(client, 'ticket_update', { ticket: t.id, labels_remove: ['Question'], frozen: false });
     const before = await tool(client, 'ticket_read', { ticket: t.id, newest: 100 });
+    // The bridge posts the lead-in as the agent, so count from here, not from 0.
+    const seen = (await agentReplies(issue)).length;
     ok(await rita.api('POST', `/api/issues/${issue.id}/comments`, { body: 'Ja, auch Jahre.' }));
     ok(await g.admin.api('PATCH', `/api/issues/${issue.id}`, { assigneeAgentId: g.agent.id, status: 'todo' }));
-    await nextReply(issue, 0);
+    const replies = await nextReply(issue, seen);
     const after = await tool(client, 'ticket_read', { ticket: t.id, newest: 100 });
     await client.close();
     expect(after.comments.map((c) => c.id)).toEqual(before.comments.map((c) => c.id));
     expect(after.labels).toEqual(before.labels);
     expect(after.frozen).toBe(false);
-    expect(await agentReplies(issue)).toHaveLength(1);
+    expect(replies).toHaveLength(seen + 1);
+    expect(replies.at(-1).body).toMatch(/geklärt|erledigt|beantwortet|settled/i);
   });
 
 });
