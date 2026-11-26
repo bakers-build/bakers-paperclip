@@ -183,12 +183,21 @@ export function taskOf(t, paperclipUrl) {
 }
 
 /**
- * One webhook delivery. Returns {status, reason?}: 401 bad signature or stale, 400 no event,
- * 404 unknown ticket or no task, 200 handled (also a repeated event id, posted once).
+ * One webhook delivery. `deps.groups` holds one entry per bakers.build group: its webhook
+ * `secret` and its own `readTicket`, `readComment` and `post`. The secret that verifies the
+ * signature picks the group, so a delivery reads only its own group's tickets.
+ * Returns {status, reason?}: 401 bad signature or stale, 400 no event, 404 unknown ticket or
+ * no task, 200 handled (also a repeated event id, posted once).
  */
 export async function deliver({ headers, rawBody }, deps) {
-  const bad = verify(headers ?? {}, rawBody ?? '', deps.secret, deps.now());
-  if (bad) {
+  let bad = 'no group configured';
+  const verified = [];
+  for (const g of deps.groups) {
+    const why = verify(headers ?? {}, rawBody ?? '', g.secret, deps.now());
+    if (why) bad = why;
+    else verified.push(g);
+  }
+  if (!verified.length) {
     deps.log('warn', `refused webhook: ${bad}`);
     return { status: 401, reason: bad };
   }
@@ -203,23 +212,38 @@ export async function deliver({ headers, rawBody }, deps) {
     return { status: 400, reason: 'not an event' };
   }
   if (await deps.seen.has(ev.event_id)) return { status: 200, reason: 'duplicate' };
-  const t = await deps.readTicket(ev.ticket.uuid);
+  // Several groups may share a secret: the one that reads the ticket and holds its task posts.
+  let t = null;
+  let task = null;
+  let inherited = false;
+  let group = null;
+  for (const g of verified) {
+    const mine = await g.readTicket(ev.ticket.uuid);
+    if (!mine) continue;
+    t ??= mine;
+    let found = taskOf(mine, g.paperclipUrl ?? deps.paperclipUrl);
+    let up = false;
+    // shortcut: one ancestor level, from the event's parent_uuid; walk further once bakers returns parents.
+    if (!found && ev.ticket.parent_uuid) {
+      const parent = await g.readTicket(ev.ticket.parent_uuid);
+      found = parent && taskOf(parent, g.paperclipUrl ?? deps.paperclipUrl);
+      up = Boolean(found);
+    }
+    if (found && (await (g.holds?.(found) ?? true))) {
+      [t, task, inherited, group] = [mine, found, up, g];
+      break;
+    }
+  }
   if (!t) {
     deps.log('warn', `refused webhook: unknown ticket ${ev.ticket.identifier ?? ev.ticket.uuid}`, { event_id: ev.event_id });
     return { status: 404, reason: 'unknown ticket' };
-  }
-  let task = taskOf(t, deps.paperclipUrl);
-  let inherited = false;
-  // shortcut: one ancestor level, from the event's parent_uuid; walk further once bakers returns parents.
-  if (!task && ev.ticket.parent_uuid) {
-    const parent = await deps.readTicket(ev.ticket.parent_uuid);
-    task = parent && taskOf(parent, deps.paperclipUrl);
-    inherited = Boolean(task);
   }
   if (!task) {
     deps.log('warn', `refused webhook: unknown ticket ${t.identifier}: no Paperclip task`, { event_id: ev.event_id });
     return { status: 404, reason: 'no task' };
   }
+  // The group's own settings (language, zones, Paperclip URL) over the shared ones.
+  deps = { ...deps, ...group };
   for (const text of await texts(ev, t, deps)) {
     await deps.post(task, inherited && !text.startsWith(`${t.identifier} · `) ? `${t.identifier} · ${text}` : text);
   }

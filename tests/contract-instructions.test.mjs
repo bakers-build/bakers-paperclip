@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const agents = readFileSync(new URL('../agent/AGENTS.md', import.meta.url), 'utf8');
-const adapter = JSON.parse(readFileSync(new URL('../agent/adapter-config.json', import.meta.url), 'utf8'));
 const flat = agents.replace(/\s+/g, ' ');
 
 describe('hand-over rules', () => {
@@ -66,7 +65,7 @@ describe('hand-over rules', () => {
 });
 
 describe('host context', () => {
-  it('gives the agent the Paperclip URL and German as the default language', () => {
-    expect(adapter.promptTemplate).toMatch(/Host context: Paperclip URL http:\/\/localhost:3100; language de; bakers\.build projects of this group: DEMO, DEMO2\./);
+  it('names the Paperclip URL, German as the default language and the group’s projects', () => {
+    expect(agents).toContain('- Paperclip URL: http://localhost:3100\n- Language: de\n- bakers.build projects of this group: DEMO, DEMO2');
   });
 });

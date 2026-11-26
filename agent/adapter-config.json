@@ -1,7 +1,6 @@
 {
   "engine": "cli",
   "dangerouslySkipPermissions": false,
-  "instructionsFilePath": "/opt/bakers-paperclip/agent/AGENTS.md",
   "extraArgs": [
     "--tools",
     "",
@@ -22,6 +21,5 @@
       "type": "secret_ref",
       "secretId": "00000000-0000-0000-0000-000000000000"
     }
-  },
-  "promptTemplate": "You are agent {{agent.id}} ({{agent.name}}). Host context: Paperclip URL http://localhost:3100; language de; bakers.build projects of this group: DEMO, DEMO2."
+  }
 }

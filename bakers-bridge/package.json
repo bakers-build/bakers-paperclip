@@ -1,0 +1,11 @@
+{
+  "name": "bakers-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Receives the bakers.build webhook and posts the ticket's news into its Paperclip task.",
+  "paperclipPlugin": {
+    "manifest": "./manifest.mjs",
+    "worker": "./worker.mjs"
+  }
+}

@@ -43,16 +43,22 @@ beforeEach(() => {
   logs = [];
   seen = new Set();
   deps = {
-    secret: SECRET,
     now: () => NOW,
     paperclipUrl: PAPERCLIP,
     zones: ['preview.example.org'],
     messages: de,
     seen: { has: async (id) => seen.has(id), add: async (id) => void seen.add(id) },
-    readTicket: async (uuid) => tickets[uuid] ?? null,
-    readComment: async (_ticket, id) => comments[id] ?? null,
-    post: async (task, text) => void posts.push({ task, text }),
     log: (level, message, meta) => logs.push({ level, message, meta }),
+    groups: [
+      // Another group first: its secret does not verify, so its key never reads this group's tickets.
+      { secret: 'other-group-secret', readTicket: async () => tickets['t-1'], readComment: async () => null, post: async () => posts.push('wrong group') },
+      {
+        secret: SECRET,
+        readTicket: async (uuid) => tickets[uuid] ?? null,
+        readComment: async (_ticket, id) => comments[id] ?? null,
+        post: async (task, text) => void posts.push({ task, text }),
+      },
+    ],
   };
 });
 
@@ -62,6 +68,19 @@ describe('deliver: refusals', () => {
     expect(res.status).toBe(401);
     expect(posts).toEqual([]);
     expect(logs.some((l) => l.level === 'warn' && /signature/.test(l.message))).toBe(true);
+  });
+
+  it('reads and posts with the group whose secret signed the delivery, only', async () => {
+    await deliver(sign(event('run.started', { state_at_start: 'working' })), deps);
+    expect(posts).toEqual([{ task: expect.any(Object), text: 'Wir arbeiten jetzt daran.' }]);
+  });
+
+  it('with a secret shared by several groups, posts with the group whose company holds the task', async () => {
+    const elsewhere = [];
+    deps.groups.unshift({ ...deps.groups[1], holds: async () => false, post: async (task, text) => void elsewhere.push(text) });
+    await deliver(sign(event('run.started', { state_at_start: 'working' })), deps);
+    expect(elsewhere).toEqual([]);
+    expect(posts.map((p) => p.text)).toEqual(['Wir arbeiten jetzt daran.']);
   });
 
   it('refuses a delivery older than five minutes', async () => {

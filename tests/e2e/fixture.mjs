@@ -1,0 +1,133 @@
+// Sets up one bakers.build group in the running Paperclip, the way README › Set up a group
+// describes it by hand: company, secrets, PM agent from agent/*, bakers-bridge config.
+import { createHmac, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { connect } from '../../bakers-bridge/bakers-client.mjs';
+import { DEMO, PAPERCLIP, ok, session } from './paperclip.mjs';
+
+const root = new URL('../../', import.meta.url);
+const file = (path) => readFileSync(new URL(path, root), 'utf8');
+export const env = {
+  ...Object.fromEntries(
+    (() => {
+      try {
+        return file('.env');
+      } catch {
+        return '';
+      }
+    })()
+      .split('\n')
+      .filter((l) => l && !l.startsWith('#'))
+      .map((l) => l.split(/=(.*)/s)),
+  ),
+  ...process.env,
+};
+export const WEBHOOK = `${PAPERCLIP}/api/plugins/bakers-bridge/webhooks/bakers`;
+// Paperclip reaches the demo inside the compose network.
+const BAKERS_IN_COMPOSE = 'http://bakers-demo:8090';
+
+let adminSession;
+export const admin = () => (adminSession ??= session({ email: 'admin@example.org', name: 'Ada Admin' }));
+
+/** The board admin, with the instance claimed and the plugin installed and ready. */
+export async function instance() {
+  const a = await admin();
+  const health = ok(await a.api('GET', '/api/health'));
+  if (health.bootstrapStatus !== 'ready') ok(await a.api('POST', '/api/bootstrap/claim'));
+  const plugin = await a.api('GET', '/api/plugins/bakers-bridge');
+  if (plugin.status === 404) ok(await a.api('POST', '/api/plugins/install', { packageName: '/opt/bakers-paperclip/bakers-bridge', isLocalPath: true }));
+  return a;
+}
+
+/** A fresh company for one group, with its PM agent and bridge config. */
+export async function group(name = `Group ${randomUUID().slice(0, 8)}`) {
+  const a = await instance();
+  const company = ok(await a.api('POST', '/api/companies', { name }));
+  const secret = async (key, value) => ok(await a.api('POST', `/api/companies/${company.id}/secrets`, { name: key, value })).id;
+  const webhookSecret = await secret('BAKERS_WEBHOOK_SECRET', env.BAKERS_WEBHOOK_SECRET);
+  const bakersKey = await secret('BAKERS_API_KEY', env.DEMO_BAKERS_API_KEY);
+  const adapterConfig = JSON.parse(file('agent/adapter-config.json'));
+  adapterConfig.env.BAKERS_API_KEY.secretId = bakersKey;
+  adapterConfig.env.BAKERS_URL.value = BAKERS_IN_COMPOSE;
+  const agent = ok(
+    await a.api('POST', `/api/companies/${company.id}/agents`, {
+      name: 'PM Agent',
+      role: 'pm',
+      adapterType: 'claude_local',
+      runner: 'legacy',
+      adapterConfig,
+      instructionsBundle: { files: { 'AGENTS.md': file('agent/AGENTS.md') } },
+    }),
+  );
+  ok(
+    await a.api('POST', '/api/plugins/bakers-bridge/config', {
+      companyId: company.id,
+      configJson: {
+        bakersUrl: BAKERS_IN_COMPOSE,
+        paperclipUrl: PAPERCLIP,
+        language: 'de',
+        previewZones: 'preview.example.org',
+        agentId: agent.id,
+        webhookSecret: { type: 'secret_ref', secretId: webhookSecret },
+        bakersApiKey: { type: 'secret_ref', secretId: bakersKey },
+      },
+    }),
+  );
+  return { admin: a, company, agent };
+}
+
+/** A task in the company and a demo ticket that links it, as the PM agent leaves them. */
+export async function linkedTicket({ admin: a, company }, title = 'Gutscheine im Checkout') {
+  const issue = ok(await a.api('POST', `/api/companies/${company.id}/issues`, { title, description: 'e2e' }));
+  const bakers = await connect(`${DEMO}/mcp`, env.DEMO_BAKERS_API_KEY);
+  const ticket = await bakers.call('bakers_ticket_create', { title, workflow: 'bb_work', project: 'DEMO' });
+  await bakers.call('bakers_ticket_update', { ticket: ticket.uuid, links_add: [{ uri: `${PAPERCLIP}/${company.issuePrefix}/issues/${issue.identifier}`, title: 'Paperclip task' }] });
+  return { issue, ticket, bakers };
+}
+
+/** The task's comment bodies, oldest first. */
+export async function comments(a, issue) {
+  const list = ok(await a.api('GET', `/api/issues/${issue.id}/comments`));
+  return [...list].sort((x, y) => Date.parse(x.createdAt) - Date.parse(y.createdAt));
+}
+
+export const emit = async (type, ticket, data) => ok({ status: (await fetch(`${DEMO}/emit`, { method: 'POST', body: JSON.stringify({ type, ticket, data }) })).status, body: null });
+
+/** POSTs a signed event straight to the bridge, as bakers.build would; returns the HTTP status. */
+export async function deliver(event, { secret = env.BAKERS_WEBHOOK_SECRET } = {}) {
+  const body = JSON.stringify(event);
+  const res = await fetch(WEBHOOK, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-bakers-signature': `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`,
+      'x-bakers-timestamp': String(Math.floor(Date.now() / 1000)),
+    },
+    body,
+  });
+  if (res.status !== 200) console.warn(`bridge answered ${res.status}: ${await res.text()}`);
+  return res.status;
+}
+
+export async function until(check, { tries = 100, ms = 200 } = {}) {
+  for (let i = 0; i < tries; i++) {
+    const value = await check();
+    if (value) return value;
+    await new Promise((r) => setTimeout(r, ms));
+  }
+  return check();
+}
+
+/**
+ * A requester in the group's company: invited as `operator`, then stripped of every grant
+ * (README › Invite a requester), so they file and follow tasks and configure nothing.
+ */
+export async function requester({ admin: a, company }, email = `requester-${randomUUID().slice(0, 8)}@example.org`) {
+  const invite = ok(await a.api('POST', `/api/companies/${company.id}/invites`, { allowedJoinTypes: 'human', humanRole: 'operator' }));
+  const r = await session({ email, name: 'Rita Requester' });
+  ok(await r.api('POST', `/api/invites/${invite.token ?? invite.inviteUrl.split('/').pop()}/accept`, { requestType: 'human' }));
+  const members = ok(await a.api('GET', `/api/companies/${company.id}/members`));
+  const member = (members.members ?? members).find((m) => JSON.stringify(m).includes(email));
+  ok(await a.api('PATCH', `/api/companies/${company.id}/members/${member.id}/role-and-grants`, { membershipRole: 'operator', grants: [] }));
+  return { ...r, email };
+}

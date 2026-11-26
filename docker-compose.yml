@@ -1,0 +1,48 @@
+# Paperclip with the bakers-bridge plugin: `docker compose up`.
+# The local demo adds a bakers.build stand-in: `docker compose --profile demo up`.
+# Every value comes from .env (see .env.example and README › Configuration).
+services:
+  paperclip:
+    # Paperclip v2026.1117.0, pinned by digest.
+    image: ghcr.io/paperclipai/paperclip@sha256:bdf38d10544dc6c831e16dc027f23ad586353ef3be1a1b2c6979e63b956aceb1
+    pids_limit: 2048
+    stop_grace_period: 90s
+    ports:
+      - "${PAPERCLIP_PORT:-3100}:3100"
+    environment:
+      HOST: "0.0.0.0"
+      PAPERCLIP_HOME: /paperclip
+      PAPERCLIP_DEPLOYMENT_MODE: authenticated
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: private
+      PAPERCLIP_PUBLIC_URL: "${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}"
+      PAPERCLIP_ALLOWED_HOSTNAMES: "paperclip,${PAPERCLIP_ALLOWED_HOSTNAMES:-}"
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set}"
+      PAPERCLIP_TOOL_ACTION_SIGNING_SECRET: "${PAPERCLIP_TOOL_ACTION_SIGNING_SECRET:?PAPERCLIP_TOOL_ACTION_SIGNING_SECRET must be set}"
+      # Requesters never see or change how agents run.
+      PAPERCLIP_HIDDEN_SETTINGS: instance.adapters
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+    volumes:
+      - paperclip-data:/paperclip
+      # This repository: the bakers-bridge plugin and the PM agent's instructions, config and skills.
+      - .:/opt/bakers-paperclip:ro
+      # Read-only, secret-free clones of the group's projects, the PM agent's code context.
+      - "${PM_CLONES_DIR:-./data/clones}:/clones:ro"
+
+  bakers-demo:
+    profiles: [demo]
+    image: node:24.11.1-alpine@sha256:682368d8253e0c3364b803956085c456a612d738bd635926d73fa24db3ce53d7
+    working_dir: /opt/bakers-paperclip
+    command: node demo/server.mjs
+    ports:
+      - "${DEMO_PORT:-8090}:8090"
+    environment:
+      DEMO_BAKERS_API_KEY: "${DEMO_BAKERS_API_KEY:?DEMO_BAKERS_API_KEY must be set}"
+      BAKERS_WEBHOOK_SECRET: "${BAKERS_WEBHOOK_SECRET:?BAKERS_WEBHOOK_SECRET must be set}"
+      BRIDGE_WEBHOOK_URL: http://paperclip:3100/api/plugins/bakers-bridge/webhooks/bakers
+      DEMO_PUBLIC_URL: "http://localhost:${DEMO_PORT:-8090}"
+      DEMO_STEP_MS: "${DEMO_STEP_MS:-2000}"
+    volumes:
+      - .:/opt/bakers-paperclip:ro
+
+volumes:
+  paperclip-data:
