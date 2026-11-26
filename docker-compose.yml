@@ -31,7 +31,8 @@ services:
       - "${PM_CLONES_DIR:-./data/clones}:/clones:ro"
 
 
-  # A real bakers.build v0.14.0 (its standalone stack, images pinned by digest), profile `bakers`.
+  # A real bakers.build 0.14.1-next.13 (`next` at 5f9ff2fe, the first build with bb_webhook; its
+  # standalone stack, images pinned by digest), profile `bakers`. A release tag replaces it later.
   # Reached as http://bakers.localhost:8080 from this machine and as http://bakers-gateway inside;
   # sign-in mails land in Mailpit on http://localhost:8125.
   bakers-init:
@@ -64,7 +65,7 @@ services:
 
   bakers-deploy: &bakers-app
     profiles: [bakers]
-    image: ghcr.io/bakers-build/bakers-build/php:0.14.0@sha256:ca762b2839fe268374552647dca2996755a3a3a5c2912d3d702290cd3efe8f37
+    image: ghcr.io/bakers-build/bakers-build/php:next@sha256:4b20fdb969db7942a7473a426926b1f905c85f639e0d824733a069b285a55faa
     depends_on:
       bakers-init:
         condition: service_completed_successfully
@@ -124,7 +125,7 @@ services:
 
   bakers:
     profiles: [bakers]
-    image: ghcr.io/bakers-build/bakers-build/nginx:0.14.0@sha256:f557283b256de886dc48f24d3e6c3de7e3746329d77f93223ffd2772dccad5cc
+    image: ghcr.io/bakers-build/bakers-build/nginx:next@sha256:d5901d334fa5ce979d8d14d8cb34956259cec608b24d371ef832d1c4571613e5
     depends_on: [bakers-php]
     environment:
       NGINX_BACKEND_HOST: php

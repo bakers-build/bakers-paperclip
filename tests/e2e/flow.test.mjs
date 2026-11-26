@@ -2,15 +2,15 @@
 // Demo group webhook (pnpm bakers:seed) brings each text into the task once. No event is built
 // here: the test changes the ticket through MCP as the conductor and the agents would.
 import { expect, it } from 'vitest';
-import { group, linkedTicket, nudge, posted, tool } from './fixture.mjs';
+import { claim, group, linkedTicket, nudge, posted, tool } from './fixture.mjs';
 
 it('plan → working → claim → cancel → question → review with preview → done, each once in the task', async () => {
   const g = await group();
   const { issue, ticket, bakers: client } = await linkedTicket(g);
   const call = (name, args) => tool(client, name, { ticket: ticket.id, ...args });
   const moveTo = async (to) => expect(await call('ticket_transition', { state: to })).toMatchObject({ state: to });
-  // Each step waits for its text: bakers.build delivers on its cron, in order within a run only.
-  const sees = (text) => posted(g.admin, issue, (b) => b.includes(text));
+  // Each step waits for a comment that contains its text: bakers.build delivers on its cron.
+  const sees = (text) => posted(g.admin, issue, (b) => b.some((body) => body.includes(text)));
 
   await moveTo('plan');
   await sees('Diese Anfrage ist ausgearbeitet und wartet auf die Freigabe, damit wir anfangen können.');
@@ -20,6 +20,7 @@ it('plan → working → claim → cancel → question → review with preview �
   // A conductor claims it: the first run outside qualification is `claimed`.
   const { conductors } = await tool(client, 'conductor_list', { project: 'DEMO' });
   await call('ticket_update', { conductor: conductors[0].uuid });
+  claim(ticket);
   await sees('Wir arbeiten jetzt daran.');
   // The run is cancelled: `run_ended`, and the newest run says how.
   await call('run_cancel', { reason: 'e2e' });
@@ -52,7 +53,8 @@ it('plan → working → claim → cancel → question → review with preview �
     `Es gibt etwas zum Ansehen:\n${preview}`,
     `Das ist fertig und bereit zum Ausprobieren.\n\n[${ticket.identifier} · Gutscheine im Checkout](${ticket.url})`,
   ]);
-});
+  // Ten steps, each waiting for bakers.build's cron and the bridge's drain.
+}, 900_000);
 
 it('a sub-ticket’s state change reaches its parent’s task, behind its identifier', async () => {
   const g = await group();
@@ -60,5 +62,5 @@ it('a sub-ticket’s state change reaches its parent’s task, behind its identi
   const sub = await tool(client, 'ticket_create', { title: 'Teil: Gutscheinfeld', workflow: 'bb_work', project: 'DEMO', description: 'e2e', parent: ticket.id });
   await tool(client, 'ticket_transition', { ticket: sub.id, state: 'plan' });
   await client.close();
-  await posted(g.admin, issue, (b) => b.includes(`${sub.identifier} · Diese Anfrage ist ausgearbeitet und wartet auf die Freigabe, damit wir anfangen können.`));
+  await posted(g.admin, issue, (b) => b.some((body) => body === `${sub.identifier} · Diese Anfrage ist ausgearbeitet und wartet auf die Freigabe, damit wir anfangen können.`));
 });

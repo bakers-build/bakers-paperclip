@@ -1,5 +1,6 @@
 // Sets up one bakers.build group in the running Paperclip, the way README › Set up a group
 // describes it by hand: company, secrets, PM agent from agent/*, bakers-bridge config.
+import { execFileSync } from 'node:child_process';
 import { createHmac, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { connect } from '../../bakers-bridge/bakers-client.mjs';
@@ -134,15 +135,34 @@ export async function nudge(client, ticket) {
   return tool(client, 'ticket_update', { ticket: ticket.id, assignee: me.uuid });
 }
 
-/** The task's comment bodies, once bakers.build's cron has delivered and `done` says they are complete. */
-export const posted = (a, issue, done) =>
-  until(
+/**
+ * The seeded conductor (`paperclip-e2e-demo`, DEMO) claims the ticket through bakers.build's own
+ * claim service, as its claim request would: a real run, and a real `claimed` activity.
+ */
+export function claim(ticket) {
+  const php = `
+    $etm = \\Drupal::entityTypeManager();
+    $t = current($etm->getStorage('bb_ticket')->loadByProperties(['uuid' => '${ticket.id}']));
+    $c = current($etm->getStorage('bb_conductor')->loadByProperties(['conductor_id' => 'paperclip-e2e-demo']));
+    echo \\Drupal::service('bb_core.ticket_claim')->claim($t, $c)->uuid();`;
+  return execFileSync('docker', ['compose', 'exec', '-T', 'bakers-php', '/var/www/html/vendor/bin/drush', 'php:eval', php], { encoding: 'utf8' }).trim();
+}
+
+/**
+ * The task's comment bodies once bakers.build's cron has delivered and `done` says they are
+ * complete; fails, saying what was there, when they never are.
+ */
+export async function posted(a, issue, done) {
+  const bodies = await until(
     async () => {
-      const bodies = (await comments(a, issue)).map((c) => c.body);
-      return done(bodies) ? bodies : null;
+      const list = (await comments(a, issue)).map((c) => c.body);
+      return done(list) ? list : null;
     },
     { tries: 120, ms: 1000 },
   );
+  if (!bodies) throw new Error(`not posted in time; the task has: ${JSON.stringify((await comments(a, issue)).map((c) => c.body))}`);
+  return bodies;
+}
 
 export async function until(check, { tries = 100, ms = 200 } = {}) {
   for (let i = 0; i < tries; i++) {

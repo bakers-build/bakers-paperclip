@@ -7,7 +7,7 @@
 // `deliver` verifies and queues a delivery and answers at once (bakers.build waits 5 s);
 // `drain` reads the ticket and posts, and keeps a delivery whose post failed for the next drain.
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 
 export const QUESTION_LABEL = 'Question';
 export const TECHNICAL_PROBLEM_LABEL = 'technical problem';
@@ -17,6 +17,10 @@ const PAUSED = ['failed', 'expired', 'cancelled'];
 const DONE = 'done';
 // Sub-ticket levels walked up to a task, against a parent cycle.
 const MAX_LEVELS = 10;
+
+// A delivery remembers which secrets verified it by their hash, never the secret: at drain time
+// every group that holds one of them may read the ticket, also one configured in between.
+const fingerprint = (secret) => createHash('sha256').update(String(secret)).digest('hex');
 
 const header = (headers, name) => {
   const v = headers[name] ?? headers[name.toLowerCase()];
@@ -137,7 +141,7 @@ const drainRun = serial();
 
 /**
  * One webhook delivery, taken and queued. `deps.groups` holds one entry per bakers.build group:
- * its `id`, its webhook `secret` and its own `readTicket`, `holds`, `runs`, `parentOf` and `post`.
+ * its webhook `secret` and its own `readTicket`, `holds`, `runs`, `parentOf` and `post`.
  * The secrets that verify the signature pick the groups whose keys read the ticket at `drain`.
  * Returns {status, reason?}: 401 bad signature or stale, 400 not an event, 200 taken (also a
  * repeated X-Bakers-Delivery, posted once). `deps.store` is the plugin's persistent state.
@@ -148,7 +152,7 @@ export async function deliver({ headers = {}, rawBody = '' }, deps) {
   for (const g of deps.groups) {
     const why = verify(headers, rawBody, g.secret, deps.now());
     if (why) bad = why;
-    else verified.push(g.id);
+    else verified.push(fingerprint(g.secret));
   }
   if (!verified.length) {
     deps.log('warn', `refused webhook: ${bad}`);
@@ -199,7 +203,7 @@ async function handle({ id, ev, groups }, deps) {
   let task = null;
   let inherited = false;
   let group = null;
-  for (const g of deps.groups.filter((x) => groups.includes(x.id))) {
+  for (const g of deps.groups.filter((x) => x.secret && groups.includes(fingerprint(x.secret)))) {
     const mine = await g.readTicket(ev.ticket.uuid);
     if (!mine) continue;
     t ??= mine;

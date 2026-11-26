@@ -41,7 +41,7 @@ curl -X POST http://localhost:3100/api/plugins/install -H 'content-type: applica
 
 ### Local bakers.build
 
-`docker compose --profile bakers up -d` runs a real bakers.build @@VERSION@@ (a `next` build with
+`docker compose --profile bakers up -d` runs a real bakers.build 0.14.1-next.13 (the first `next` build with
 `bb_webhook`, its standalone stack, pinned by digest) at http://bakers.localhost:8080, with Mailpit for its sign-in mails at
 http://localhost:8125. The first start installs it with `BAKERS_ADMIN_EMAIL` as admin; a login
 link: `docker compose exec bakers-php drush uli --uri=http://bakers.localhost:8080`. Inside the

@@ -186,6 +186,17 @@ describe('drain: which task', () => {
     expect(posts.map((p) => p.text)).toEqual([de.states.working]);
   });
 
+  it('a company set up with the secret after the delivery came in still gets its post, and no secret is stored', async () => {
+    const ev = event('status_changed', { new_state: 'working' });
+    const acme = deps.groups.pop();
+    deps.groups.push({ ...acme, id: 'old', holds: async () => false });
+    await deliver(sign(ev), deps);
+    deps.groups.push(acme);
+    await drain(deps);
+    expect(posts.map((p) => p.text)).toEqual([de.states.working]);
+    expect(JSON.stringify([...state.values()])).not.toContain(SECRET);
+  });
+
   it('takes no other /issues/ link for the task: a GitHub issue, or a task of another company', async () => {
     tickets['t-1'] = ticket({ links: [{ uri: 'https://github.com/o/r/issues/12', title: 'GitHub' }, { uri: 'https://elsewhere.example/ZZZ/issues/ZZZ-9', title: 'x' }] });
     deps.groups[1].holds = async (task) => task.issue !== 'ZZZ-9';
