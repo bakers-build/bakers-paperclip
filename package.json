@@ -14,6 +14,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
+    "@modelcontextprotocol/server-filesystem": "2.2.0",
+    "@paperclipai/mcp-server": "2026.1117.0",
     "@paperclipai/plugin-sdk": "2026.1117.0"
   },
   "devDependencies": {

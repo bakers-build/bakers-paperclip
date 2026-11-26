@@ -9,19 +9,17 @@
     },
     "code": {
       "type": "stdio",
-      "command": "npx",
+      "command": "node",
       "args": [
-        "-y",
-        "@modelcontextprotocol/server-filesystem@2.2.0",
+        "/opt/bakers-paperclip/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js",
         "/clones"
       ]
     },
     "paperclip": {
       "type": "stdio",
-      "command": "npx",
+      "command": "node",
       "args": [
-        "-y",
-        "@paperclipai/mcp-server@2026.1117.0"
+        "/opt/bakers-paperclip/node_modules/@paperclipai/mcp-server/dist/stdio.js"
       ]
     },
     "whois": {

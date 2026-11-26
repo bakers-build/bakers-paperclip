@@ -64,13 +64,14 @@ at `/opt/bakers-paperclip` (`Dockerfile`):
 - `agent/mcp.json` and `agent/whois-mcp.mjs`, which every agent run loads;
 - `agent/plugin/`, the skills, built in the image from their pinned sources;
 - `bakers-bridge/`, which the plugin install takes from that path;
-- `node_modules`, the bridge's and whois' dependencies.
+- `node_modules`: the bridge's and whois' dependencies and the agent's filesystem and Paperclip
+  MCP servers, pinned in `package.json` and the lockfile.
 
 Run it like the upstream image, with `docker-compose.yml`'s environment and a volume for
 `/paperclip`, without the repository mount. `agent/AGENTS.md` and `agent/adapter-config.json` are
-not in it: they are pasted into Paperclip per group (*Set up a group*). The agent's two `npx` MCP
-servers (filesystem, Paperclip) are fetched at their pinned versions on first use, so the
-container needs the npm registry. `sh scripts/image-smoke.sh <image>` checks an image; CI builds
+not in it: they are pasted into Paperclip per group (*Set up a group*). The plugin itself is installed
+once per instance (*Start*): that is a database entry pointing at
+`/opt/bakers-paperclip/bakers-bridge`, so a new image brings new bridge code on restart. `sh scripts/image-smoke.sh <image>` checks an image; CI builds
 and checks it on every pull request.
 
 ## Set up a group

@@ -68,12 +68,17 @@ describe('MCP config', () => {
     expect(mcp.mcpServers.bakers).toEqual({ type: 'http', url: '${BAKERS_URL}/mcp', headers: { Authorization: 'Bearer ${BAKERS_API_KEY}' } });
   });
 
-  it('reads code from the clones directory through a pinned filesystem server', () => {
-    expect(mcp.mcpServers.code).toEqual({ type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem@2.2.0', '/clones'] });
+  it('reads code from the clones directory through the filesystem server installed here', () => {
+    expect(mcp.mcpServers.code).toEqual({ type: 'stdio', command: 'node', args: ['/opt/bakers-paperclip/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js', '/clones'] });
   });
 
-  it('reaches the task through the pinned Paperclip MCP server with the run’s own key', () => {
-    expect(mcp.mcpServers.paperclip).toEqual({ type: 'stdio', command: 'npx', args: ['-y', '@paperclipai/mcp-server@2026.1117.0'] });
+  it('reaches the task through the Paperclip MCP server installed here, with the run’s own key', () => {
+    expect(mcp.mcpServers.paperclip).toEqual({ type: 'stdio', command: 'node', args: ['/opt/bakers-paperclip/node_modules/@paperclipai/mcp-server/dist/stdio.js'] });
+  });
+
+  it('pins both servers in package.json, so the lockfile fixes their whole tree', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    expect(pkg.dependencies).toMatchObject({ '@modelcontextprotocol/server-filesystem': '2.2.0', '@paperclipai/mcp-server': '2026.1117.0' });
   });
 
   it('commits no token: every credential is an env reference', () => {

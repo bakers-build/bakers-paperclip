@@ -5,7 +5,7 @@ set -eu
 docker run --rm --entrypoint sh "$1" -c '
   set -e
   cd /opt/bakers-paperclip
-  for f in agent/mcp.json agent/whois-mcp.mjs agent/plugin/.claude-plugin/plugin.json agent/plugin/skills/bb-create-ticket/SKILL.md bakers-bridge/manifest.mjs bakers-bridge/worker.mjs; do
+  for f in node_modules/@modelcontextprotocol/server-filesystem/dist/index.js node_modules/@paperclipai/mcp-server/dist/stdio.js agent/mcp.json agent/whois-mcp.mjs agent/plugin/.claude-plugin/plugin.json agent/plugin/skills/bb-create-ticket/SKILL.md bakers-bridge/manifest.mjs bakers-bridge/worker.mjs; do
     test -f "$f" || { echo "missing $f"; exit 1; }
   done
   cd bakers-bridge && node -e "Promise.all([import(\"@paperclipai/plugin-sdk\"), import(\"@modelcontextprotocol/sdk/client/index.js\")]).then(() => console.log(\"bridge dependencies resolve\"))"
