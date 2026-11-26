@@ -17,6 +17,7 @@ This repository is public: no secret, token or customer name belongs in it.
 | `agent/mcp.json` | the agent's only tools: bakers.build MCP, a read-only code reader, Paperclip's task tools |
 | `scripts/skills.sh` | `pnpm skills` builds `agent/plugin/` (gitignored), the agent's skills, from pinned sources |
 | `scripts/bakers-seed.sh` | `pnpm bakers:seed` fills the local bakers.build for the e2e tests |
+| `Dockerfile` | the deployable image: Paperclip plus the runtime files (README › Deploy) |
 
 Ticket work runs through [WORKFLOW.md](WORKFLOW.md).
 
@@ -53,6 +54,24 @@ Claude's CLI resolves every `*.localhost` name to itself, so the name from this 
 service account *PM Agent E2E* in the Demo team only, whose new key it writes into `.env` as
 `BAKERS_E2E_API_KEY`. Set up a group as below with `BAKERS_URL` `http://bakers-gateway` and that
 key; `tests/e2e/fixture.mjs` does exactly that.
+
+## Deploy
+
+A tag `v<version>` builds `ghcr.io/bakers-build/bakers-paperclip:<version>`
+(`.github/workflows/release.yml`): the pinned Paperclip image plus this repository's runtime files
+at `/opt/bakers-paperclip` (`Dockerfile`):
+
+- `agent/mcp.json` and `agent/whois-mcp.mjs`, which every agent run loads;
+- `agent/plugin/`, the skills, built in the image from their pinned sources;
+- `bakers-bridge/`, which the plugin install takes from that path;
+- `node_modules`, the bridge's and whois' dependencies.
+
+Run it like the upstream image, with `docker-compose.yml`'s environment and a volume for
+`/paperclip`, without the repository mount. `agent/AGENTS.md` and `agent/adapter-config.json` are
+not in it: they are pasted into Paperclip per group (*Set up a group*). The agent's two `npx` MCP
+servers (filesystem, Paperclip) are fetched at their pinned versions on first use, so the
+container needs the npm registry. `sh scripts/image-smoke.sh <image>` checks an image; CI builds
+and checks it on every pull request.
 
 ## Set up a group
 

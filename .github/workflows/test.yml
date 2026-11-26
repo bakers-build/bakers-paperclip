@@ -61,3 +61,10 @@ jobs:
       - run: pnpm test:e2e
       - if: failure()
         run: docker compose --profile bakers logs --tail 300
+
+  image:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t bakers-paperclip:ci .
+      - run: sh scripts/image-smoke.sh bakers-paperclip:ci

@@ -28,6 +28,7 @@ Apply all matching rows to the plan and final diff. Run each distinct command on
 | When | Command |
 |---|---|
 | Any change | `pnpm test` |
+| A change to `Dockerfile`, `bakers-bridge/`, `agent/` or `scripts/skills.sh` | `docker build -t bakers-paperclip:local . && sh scripts/image-smoke.sh bakers-paperclip:local` |
 | A change to `bakers-bridge/`, `agent/`, `scripts/`, `docker-compose.yml` or `tests/e2e/` | `pnpm test:e2e` against the provisioned stack; the live agent tests need `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` |
 
 ## bb-phase-deliver

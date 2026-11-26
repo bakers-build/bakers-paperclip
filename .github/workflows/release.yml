@@ -1,0 +1,40 @@
+name: release
+
+# A tag v<version> builds the deployable image and pushes it to
+# ghcr.io/bakers-build/bakers-paperclip:<version> (README › Deploy).
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build for the smoke check
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: bakers-paperclip:release
+      - run: sh scripts/image-smoke.sh bakers-paperclip:release
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
