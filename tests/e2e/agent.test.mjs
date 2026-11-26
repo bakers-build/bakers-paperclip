@@ -5,7 +5,7 @@
 import { execFileSync } from 'node:child_process';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { PAPERCLIP, ok } from './paperclip.mjs';
-import { bakers, comments, deliver, env, event, group, requester, tool, until } from './fixture.mjs';
+import { bakers, comments, env, group, nudge, requester, tool, until } from './fixture.mjs';
 
 const live = Boolean(env.ANTHROPIC_API_KEY || env.CLAUDE_CODE_OAUTH_TOKEN);
 // The group's tickets that link a task, from bakers.build.
@@ -103,11 +103,11 @@ describe.skipIf(!live)('the live PM agent', () => {
     const client = await bakers();
     const t = await tool(client, 'ticket_create', { title: 'Newsletter im Blog', workflow: 'bb_work', project: 'DEMO2', description: 'e2e' });
     await tool(client, 'ticket_update', { ticket: t.id, links_add: [{ uri: `${PAPERCLIP}/${g.company.issuePrefix}/issues/${issue.identifier}`, title: 'Paperclip task' }] });
-    // The working agent asks; bakers.build's webhook (sent here by the test) brings the question into the task.
+    // The working agent asks; bakers.build's webhook brings the question into the task with the ticket's next activity.
     await tool(client, 'comment_create', { ticket: t.id, type: 'comment', body: 'Soll die Anmeldung ein Double-Opt-in haben?' });
     await tool(client, 'ticket_update', { ticket: t.id, labels_add: ['Question'], frozen: true });
-    expect(await deliver(event('ticket.labels_changed', { added: ['Question'], removed: [] }, t), g.signing)).toBe(200);
-    await until(async () => (await comments(g.admin, issue)).some((c) => c.body.includes('hat eine Frage')));
+    await nudge(client, t);
+    await until(async () => (await comments(g.admin, issue)).some((c) => c.body.includes('hat eine Frage')), { tries: 120, ms: 1000 });
     ok(await rita.api('POST', `/api/issues/${issue.id}/comments`, { body: 'Ja, mit Double-Opt-in.' }));
     ok(await g.admin.api('PATCH', `/api/issues/${issue.id}`, { assigneeAgentId: g.agent.id, status: 'todo' }));
     const after = await until(async () => {
@@ -127,8 +127,8 @@ describe.skipIf(!live)('the live PM agent', () => {
     await tool(client, 'ticket_update', { ticket: t.id, links_add: [{ uri: `${PAPERCLIP}/${g.company.issuePrefix}/issues/${issue.identifier}`, title: 'Paperclip task' }] });
     await tool(client, 'comment_create', { ticket: t.id, type: 'comment', body: 'Soll das Archiv auch Jahre zeigen?' });
     await tool(client, 'ticket_update', { ticket: t.id, labels_add: ['Question'], frozen: true });
-    expect(await deliver(event('ticket.labels_changed', { added: ['Question'], removed: [] }, t), g.signing)).toBe(200);
-    await until(async () => (await comments(g.admin, issue)).some((c) => c.body.includes('hat eine Frage')));
+    await nudge(client, t);
+    await until(async () => (await comments(g.admin, issue)).some((c) => c.body.includes('hat eine Frage')), { tries: 120, ms: 1000 });
     // Settled in bakers.build before the requester answers in the task.
     await tool(client, 'ticket_update', { ticket: t.id, labels_remove: ['Question'], frozen: false });
     const before = await tool(client, 'ticket_read', { ticket: t.id, newest: 100 });

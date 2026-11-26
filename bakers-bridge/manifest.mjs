@@ -5,14 +5,16 @@ const secretRef = { type: 'object', title: 'Company secret', properties: { type:
 export default {
   id: 'bakers-bridge',
   apiVersion: 1,
-  version: '0.1.0',
+  version: '0.2.0',
   displayName: 'bakers.build bridge',
   description: 'Posts what happens to a bakers.build ticket into the Paperclip task it came from.',
   author: 'bakers.build',
   categories: ['automation'],
-  capabilities: ['webhooks.receive', 'companies.read', 'issues.read', 'issue.comments.create', 'plugin.state.read', 'plugin.state.write', 'secrets.read-ref', 'http.outbound'],
+  capabilities: ['webhooks.receive', 'companies.read', 'issues.read', 'issue.comments.create', 'plugin.state.read', 'plugin.state.write', 'secrets.read-ref', 'http.outbound', 'jobs.schedule'],
   entrypoints: { worker: './worker.mjs' },
-  webhooks: [{ endpointKey: 'bakers', displayName: 'bakers.build events', description: 'Signed bakers.build ticket events.' }],
+  // Posts what a failed post or a restart left queued.
+  jobs: [{ jobKey: 'drain', displayName: 'Post queued bakers.build deliveries', schedule: '* * * * *' }],
+  webhooks: [{ endpointKey: 'bakers', displayName: 'bakers.build events', description: 'bakers.build ticket activity (bb_webhook), signed.' }],
   // Per company: each company is one bakers.build group.
   instanceConfigSchema: {
     type: 'object',

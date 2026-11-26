@@ -1,29 +1,43 @@
-// Pure core of the bakers-bridge: one bakers.build webhook delivery in, the Hermes texts it
+// Pure core of the bakers-bridge: bakers.build's webhook (bb_webhook) in, the Hermes texts it
 // calls for posted into the Paperclip task of its ticket. Every I/O comes through `deps`.
 // Only fixed texts, the question's note and links reach the task: summaries are written for
 // developers, so nothing from them is passed on (decided 2026-11-26).
 // Rules are ported from hermes-bot ebfbc9e (poller/updates.mjs, questions.mjs, diff.mjs).
+//
+// `deliver` verifies and queues a delivery and answers at once (bakers.build waits 5 s);
+// `drain` reads the ticket and posts, and keeps a delivery whose post failed for the next drain.
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 
 export const QUESTION_LABEL = 'Question';
 export const TECHNICAL_PROBLEM_LABEL = 'technical problem';
-const MAX_SKEW_MS = 5 * 60 * 1000;
-const ENDED = ['done', 'failed', 'expired', 'cancelled'];
+const MAX_AGE_S = 5 * 60;
+const PAUSED = ['failed', 'expired', 'cancelled'];
+// A drained delivery keeps this in its `delivery:<id>` key, so a later retry is still a duplicate.
+const DONE = 'done';
+// Sub-ticket levels walked up to a task, against a parent cycle.
+const MAX_LEVELS = 10;
+
+// A delivery remembers which secrets verified it by their hash, never the secret: at drain time
+// every group that holds one of them may read the ticket, also one configured in between.
+const fingerprint = (secret) => createHash('sha256').update(String(secret)).digest('hex');
 
 const header = (headers, name) => {
   const v = headers[name] ?? headers[name.toLowerCase()];
   return Array.isArray(v) ? v[0] : v;
 };
 
-/** Checks `X-Bakers-Signature: sha256=<hex HMAC of the raw body>` and a timestamp within ±5 min. */
+/**
+ * bb_webhook's signature, as its guide's `verify`: `X-Bakers-Signature: sha256=<hex HMAC-SHA256 of
+ * "<X-Bakers-Timestamp>.<raw body>">`, compared in constant time, the timestamp under 5 min old.
+ */
 export function verify(headers, rawBody, secret, now) {
-  const sig = /^sha256=([0-9a-f]{64})$/.exec(header(headers, 'x-bakers-signature') ?? '')?.[1];
-  const at = Number(header(headers, 'x-bakers-timestamp')) * 1000;
-  if (!secret || !sig) return 'missing or malformed signature';
-  const expected = createHmac('sha256', secret).update(rawBody).digest();
-  if (!timingSafeEqual(Buffer.from(sig, 'hex'), expected)) return 'signature mismatch';
-  if (!Number.isFinite(at) || Math.abs(now - at) > MAX_SKEW_MS) return 'timestamp outside ±5 min';
+  const sig = header(headers, 'x-bakers-signature') ?? '';
+  const ts = header(headers, 'x-bakers-timestamp') ?? '';
+  if (!secret || !/^sha256=[0-9a-f]{64}$/.test(sig)) return 'missing or malformed signature';
+  const expected = `sha256=${createHmac('sha256', secret).update(`${ts}.${rawBody}`).digest('hex')}`;
+  if (!timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return 'signature mismatch';
+  if (!(Math.abs(now / 1000 - Number(ts)) < MAX_AGE_S)) return 'timestamp older than 5 min';
   return null;
 }
 
@@ -45,45 +59,61 @@ function footer(t, m) {
   return text;
 }
 
+const isOpen = (t) => {
+  const labels = labelsOf(t);
+  return labels.includes(QUESTION_LABEL) || labels.includes(TECHNICAL_PROBLEM_LABEL);
+};
+
 /** The texts one event calls for, given the ticket as bakers.build returns it now. */
 export async function texts(ev, t, deps) {
   const m = deps.messages;
-  const d = ev.data ?? {};
-  const labels = labelsOf(t);
-  const open = labels.includes(QUESTION_LABEL) || labels.includes(TECHNICAL_PROBLEM_LABEL);
-  switch (ev.type) {
-    case 'ticket.state_changed': {
-      const text = m.states[d.to];
+  switch (ev.event) {
+    case 'status_changed': {
+      const text = m.states[ev.new_state];
       if (!text) return [];
-      return [d.to === 'done' ? text + footer(t, m) : text];
+      return [ev.new_state === 'done' ? text + footer(t, m) : text];
     }
-    case 'run.started':
-      return m.runStart[d.state_at_start] ? [m.runStart[d.state_at_start]] : [];
-    case 'run.finished': {
-      // A run that moved the ticket on is told by its state line; an open note by its lead-in.
-      if (!ENDED.includes(d.state) || d.state_at_start !== t.state || open) return [];
-      if (d.state === 'done') return [m.runWaiting];
-      // shortcut: Hermes waited one poll for a late label or freeze; here the ticket read decides at once.
-      return t.frozen ? [] : [m.runPaused];
+    case 'claimed': {
+      // The body's state is the one the ticket was claimed in; the read may be later.
+      const text = m.runStart[ev.ticket.state ?? t.state];
+      return text ? [text] : [];
     }
-    case 'ticket.labels_changed': {
-      // Only the event that added the note's label posts it: any later label change would repeat it.
-      const added = d.added ?? [];
-      if (!t.frozen || !open || !(added.includes(QUESTION_LABEL) || added.includes(TECHNICAL_PROBLEM_LABEL))) return [];
-      const kind = labels.includes(TECHNICAL_PROBLEM_LABEL) ? 'technicalProblemLead' : 'questionLead';
-      // shortcut: the note is the newest non-summary comment; Hermes also bounded it by frozen_at, which the read does not return.
-      const note = newest(t.comments, (c) => c.type !== 'summary');
-      if (!note) return [];
-      const lead = m[kind].replace('{identifier}', () => t.identifier).replace('{title}', () => t.title);
-      return [`${lead}\n\n${note.body}`];
-    }
-    case 'ticket.link_added': {
-      if (!d.uri || !isPreview(d.uri)) return [];
-      return [`${m.previewLead}\n${d.uri}`];
+    case 'run_ended': {
+      // bakers.build sends run_ended for failed, expired and cancelled runs only, without the
+      // run's end: the newest run tells it. A run that moved the ticket on is told by its state
+      // line, an open note by its lead-in.
+      if (t.frozen || isOpen(t)) return [];
+      const run = await deps.runs(t);
+      return run && PAUSED.includes(run.state) && run.state_at_start === t.state ? [m.runPaused] : [];
     }
     default:
       return [];
   }
+}
+
+/**
+ * What the ticket shows now that no event announces (bakers.build writes no activity for a label,
+ * a freeze or a link): an open question or technical problem, and its preview links. Each has a
+ * key, so it is posted once, with whichever event comes first.
+ */
+function extras(t, deps) {
+  const m = deps.messages;
+  const out = [];
+  if (t.frozen && isOpen(t)) {
+    const kind = labelsOf(t).includes(TECHNICAL_PROBLEM_LABEL) ? 'technicalProblemLead' : 'questionLead';
+    // shortcut: the note is the newest non-summary comment; Hermes also bounded it by frozen_at, which the read does not return.
+    const note = newest(t.comments, (c) => c.type !== 'summary');
+    if (note) {
+      const lead = m[kind].replace('{identifier}', () => t.identifier).replace('{title}', () => t.title);
+      // Once per freeze, not per comment: an answer written before the unfreeze is no new question.
+      // shortcut: an unfreeze and a new question with no event between them post nothing; upgrade when bakers.build sends a freeze activity.
+      out.push({ key: `question:${t.id}`, text: `${lead}\n\n${note.body}` });
+    }
+  }
+  for (const { uri } of t.links ?? []) {
+    if (uri && isPreview(uri)) out.push({ key: `preview:${t.id}:${uri}`, text: `${m.previewLead}\n${uri}` });
+  }
+  return out;
 }
 
 /**
@@ -99,20 +129,32 @@ export function tasksOf(t) {
   return found;
 }
 
+// One chain per kind of work: queue writes stay short, so an answer never waits for a drain.
+const serial = () => {
+  let tail = Promise.resolve();
+  return (fn) => {
+    const run = tail.then(fn);
+    tail = run.catch(() => {});
+    return run;
+  };
+};
+const queueWrite = serial();
+const drainRun = serial();
+
 /**
- * One webhook delivery. `deps.groups` holds one entry per bakers.build group: its webhook
- * `secret` and its own `readTicket`, `holds` and `post`. The secret that verifies the
- * signature picks the group, so a delivery reads only its own group's tickets.
- * Returns {status, reason?}: 401 bad signature or stale, 400 no event, 404 unknown ticket or
- * no task, 200 handled (also a repeated event id, posted once).
+ * One webhook delivery, taken and queued. `deps.groups` holds one entry per bakers.build group:
+ * its webhook `secret` and its own `readTicket`, `holds`, `runs`, `parentOf` and `post`.
+ * The secrets that verify the signature pick the groups whose keys read the ticket at `drain`.
+ * Returns {status, reason?}: 401 bad signature or stale, 400 not an event, 200 taken (also a
+ * repeated X-Bakers-Delivery, posted once). `deps.store` is the plugin's persistent state.
  */
-export async function deliver({ headers, rawBody }, deps) {
+export async function deliver({ headers = {}, rawBody = '' }, deps) {
   let bad = 'no group configured';
   const verified = [];
   for (const g of deps.groups) {
-    const why = verify(headers ?? {}, rawBody ?? '', g.secret, deps.now());
+    const why = verify(headers, rawBody, g.secret, deps.now());
     if (why) bad = why;
-    else verified.push(g);
+    else verified.push(fingerprint(g.secret));
   }
   if (!verified.length) {
     deps.log('warn', `refused webhook: ${bad}`);
@@ -124,17 +166,49 @@ export async function deliver({ headers, rawBody }, deps) {
   } catch {
     ev = null;
   }
-  if (!ev?.event_id || !ev.type || !ev.ticket?.uuid) {
+  const id = header(headers, 'x-bakers-delivery') ?? ev?.id;
+  if (!ev?.event || !ev.id || !ev.ticket?.uuid || !id) {
     deps.log('warn', 'refused webhook: not an event');
     return { status: 400, reason: 'not an event' };
   }
-  if (await deps.seen.has(ev.event_id)) return { status: 200, reason: 'duplicate' };
+  const { store } = deps;
+  return queueWrite(async () => {
+    const rec = await store.get(`delivery:${id}`);
+    const queue = (await store.get('queue')) ?? [];
+    if (!rec) await store.set(`delivery:${id}`, { id, ev, groups: verified });
+    // A record outside the queue and not drained lost its queue write (a crash): queued again.
+    else if (rec === DONE || queue.includes(id)) return { status: 200, reason: 'duplicate' };
+    await store.set('queue', [...queue, id]);
+    return { status: 200 };
+  });
+}
+
+/** Posts every queued delivery; one whose ticket read or post fails stays queued for the next drain. */
+export function drain(deps) {
+  return drainRun(async () => {
+    for (const id of (await deps.store.get('queue')) ?? []) {
+      const rec = await deps.store.get(`delivery:${id}`);
+      try {
+        if (rec && rec !== DONE) await handle(rec, deps);
+      } catch (e) {
+        deps.log('warn', `bakers delivery ${id} kept for the next drain: ${e.message}`);
+        continue;
+      }
+      await queueWrite(async () => {
+        await deps.store.set(`delivery:${id}`, DONE);
+        await deps.store.set('queue', ((await deps.store.get('queue')) ?? []).filter((x) => x !== id));
+      });
+    }
+  });
+}
+
+async function handle({ id, ev, groups }, deps) {
   // Several groups may share a secret: the one that reads the ticket and holds its task posts.
   let t = null;
   let task = null;
   let inherited = false;
   let group = null;
-  for (const g of verified) {
+  for (const g of deps.groups.filter((x) => x.secret && groups.includes(fingerprint(x.secret)))) {
     const mine = await g.readTicket(ev.ticket.uuid);
     if (!mine) continue;
     t ??= mine;
@@ -142,33 +216,33 @@ export async function deliver({ headers, rawBody }, deps) {
       for (const c of candidates) if (await (g.holds?.(c) ?? true)) return c;
       return null;
     };
+    // bakers.build's body has no parent: a sub-ticket's own read leads up, level by level.
     let found = await held(tasksOf(mine));
-    let up = false;
-    // shortcut: one ancestor level, from the event's parent_uuid; walk further once bakers returns parents.
-    if (!found && ev.ticket.parent_uuid) {
-      const parent = await g.readTicket(ev.ticket.parent_uuid);
-      found = parent && (await held(tasksOf(parent)));
-      up = Boolean(found);
+    let up = mine;
+    for (let level = 0; !found && level < MAX_LEVELS; level++) {
+      up = await g.parentOf?.(up);
+      if (!up) break;
+      found = await held(tasksOf(up));
     }
     if (found) {
-      [t, task, inherited, group] = [mine, found, up, g];
+      [t, task, inherited, group] = [mine, found, up !== mine, g];
       break;
     }
   }
-  if (!t) {
-    deps.log('warn', `refused webhook: unknown ticket ${ev.ticket.identifier ?? ev.ticket.uuid}`, { event_id: ev.event_id });
-    return { status: 404, reason: 'unknown ticket' };
-  }
+  // A group webhook sends every ticket of its projects; most have no task. Not a failure.
   if (!task) {
-    deps.log('warn', `refused webhook: unknown ticket ${t.identifier}: no Paperclip task`, { event_id: ev.event_id });
-    return { status: 404, reason: 'no task' };
+    deps.log('debug', `bakers delivery ${id}: ${t ? `no Paperclip task for ${t.identifier}` : `unknown ticket ${ev.ticket.identifier ?? ev.ticket.uuid}`}`);
+    return;
   }
   // The group's own settings (its language) over the shared ones.
   deps = { ...deps, ...group };
-  for (const text of await texts(ev, t, deps)) {
+  // Seen unfrozen: the ticket's next question posts its lead-in again.
+  if (!(t.frozen && isOpen(t)) && (await deps.store.get(`question:${t.id}`))) await deps.store.set(`question:${t.id}`, false);
+  const posts = [...(await texts(ev, t, deps)).map((text, n) => ({ key: `posted:${id}:${n}`, text })), ...extras(t, deps)];
+  for (const { key, text } of posts) {
+    if (await deps.store.get(key)) continue;
     await deps.post(task, inherited && !text.startsWith(`${t.identifier} · `) ? `${t.identifier} · ${text}` : text);
+    // Remembered after each post: a retried drain repeats none that landed.
+    await deps.store.set(key, true);
   }
-  // Remembered after posting: a failed post is retried by bakers' redelivery.
-  await deps.seen.add(ev.event_id);
-  return { status: 200 };
 }

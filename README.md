@@ -41,18 +41,20 @@ curl -X POST http://localhost:3100/api/plugins/install -H 'content-type: applica
 
 ### Local bakers.build
 
-`docker compose --profile bakers up -d` runs a real bakers.build v0.14.0 (its standalone stack,
-pinned by digest) at http://bakers.localhost:8080, with Mailpit for its sign-in mails at
+`docker compose --profile bakers up -d` runs a real bakers.build 0.14.1-next.13 (the first `next` build with
+`bb_webhook`, its standalone stack, pinned by digest) at http://bakers.localhost:8080, with Mailpit for its sign-in mails at
 http://localhost:8125. The first start installs it with `BAKERS_ADMIN_EMAIL` as admin; a login
 link: `docker compose exec bakers-php drush uli --uri=http://bakers.localhost:8080`. Inside the
 compose network Paperclip reaches it as `http://bakers-gateway`, a PM agent's `BAKERS_URL`;
-Claude's CLI resolves every `*.localhost` name to itself, so the name from this machine fails there. It has no webhook yet, so nothing reaches the bridge from it.
+Claude's CLI resolves every `*.localhost` name to itself, so the name from this machine fails there. Its cron runs every 10 s (`CRON_INTERVAL`), so its
+webhook deliveries arrive within seconds.
 
 `pnpm bakers:seed` fills it for the e2e tests and for trying it out: group *Demo* with projects
 `DEMO` (Demo Shop, one conductor) and `DEMO2` (Demo Blog), group *Other customer* with
 `FOREIGN`, the users `requester@example.org` and `developer@example.org`, and the PM agent's
 service account *PM Agent E2E* in the Demo team only, whose new key it writes into `.env` as
-`BAKERS_E2E_API_KEY`. Set up a group as below with `BAKERS_URL` `http://bakers-gateway` and that
+`BAKERS_E2E_API_KEY`, and the Demo group's webhook to `http://paperclip:3100/api/plugins/bakers-bridge/webhooks/bakers`,
+whose secret it writes as `BAKERS_E2E_WEBHOOK_SECRET` (saved without the form's https-only check). Set up a group as below with `BAKERS_URL` `http://bakers-gateway` and that
 key; `tests/e2e/fixture.mjs` does exactly that.
 
 ## Deploy
@@ -96,8 +98,10 @@ Once per bakers.build group, as the instance admin:
    `PM_CLONES_DIR/<project key>`; the agent reads them through the code reader at `/clones`.
 6. **Bridge** (*Settings › Plugins › bakers-bridge*, for this company): `bakersUrl`,
    `language`, `agentId` (the PM agent), `webhookSecret` and `bakersApiKey` (the two secrets).
-7. **Webhook.** Register `<PAPERCLIP_PUBLIC_URL>/api/plugins/bakers-bridge/webhooks/bakers`
-   in bakers.build for the group's projects, signed with `BAKERS_WEBHOOK_SECRET`.
+7. **Webhook.** In bakers.build, open the group's **Webhooks** tab, choose **Create webhook**
+   and enter the URL `<PAPERCLIP_PUBLIC_URL>/api/plugins/bakers-bridge/webhooks/bakers`
+   (`https://` only). Copy the signing secret it shows, **only this once**, into the company
+   secret `BAKERS_WEBHOOK_SECRET` (step 2).
 
 ### Invite a requester
 
@@ -125,33 +129,55 @@ task. `tests/e2e/operator.test.mjs` checks this.
 | `BAKERS_HASH_SALT` | local bakers.build only: `openssl rand -hex 32`. |
 | `BAKERS_ADMIN_EMAIL` | local bakers.build only: its first admin; any address, the mail goes to Mailpit. |
 | `BAKERS_E2E_API_KEY` | tests only: written by `pnpm bakers:seed`, the seeded service account's key (`<client_id>:<secret>`). |
+| `BAKERS_E2E_WEBHOOK_SECRET` | tests only: written by `pnpm bakers:seed`, the Demo group webhook's signing secret. |
 
 Per group, in Paperclip (see *Set up a group*): the bakers.build service account's API key and
 the webhook signing secret, both from bakers.build, as company secrets.
 
 ## The webhook
 
-bakers.build's webhook is not built yet; the bridge accepts this contract, and the bakers.build
-side should build against it or the bridge adapts.
+bakers.build sends ticket activity to a webhook of a project, a group or the workspace:
+[Send ticket activity to a webhook](https://github.com/bakers-build/bakers-build/blob/next/docs/configuration/guides/send-ticket-activity-to-a-webhook.md)
+(module `bb_webhook`). The bridge takes it as that guide describes:
 
-- `POST` JSON `{event_id, type, occurred_at, ticket: {uuid, identifier, parent_uuid?}, data}`.
-- Types and `data`: `ticket.state_changed {from, to}`, `ticket.labels_changed {added, removed}`,
-  `comment.created {comment_id, type}`, `run.started {state_at_start}`,
-  `run.finished {state, state_at_start}`, `ticket.link_added {uri, title}`.
-- Headers: `X-Bakers-Signature: sha256=<hex HMAC-SHA256 of the raw body>`,
-  `X-Bakers-Timestamp: <unix seconds>`, within ±5 minutes.
-- The bridge reads the ticket itself with the group's key, finds the task among the ticket's
-  links ending in `/<prefix>/issues/<PREFIX-n>`, the one its company holds (else its parent's,
-  posting behind the sub-ticket's identifier), and posts each text once per `event_id`.
-- Only fixed texts, a question's note and links reach the task: state lines (done with the
-  ticket link), run lines, the lead-in of a question or technical problem with its note, and a
-  new preview link (designbook, DDEV). Summaries are written for developers, so `comment.created`
-  posts nothing; what came out and where to test are on the ticket, or the PM agent tells.
-- Answers: 200 handled or a repeat; a wrong signature, an unknown ticket or a ticket without a
-  task is refused, logged, and recorded by Paperclip as a failed delivery with status 502
-  (Paperclip answers every refusal of a plugin webhook with 502).
-- Delivery is at least once; there is no poller, so an event is lost when Paperclip stays
-  unreachable longer than bakers.build retries (24 h). A catch-up on start is a follow-up.
+- `POST` JSON `{event, id, occurred, workspace, project, ticket: {uuid, identifier, title, state, url},
+  actor, previous_state, new_state}`; `event` is one of `created`, `status_changed`, `assigned`,
+  `claimed`, `run_ended`, `review_requested`, `review_completed`, with no filter.
+- Headers: `X-Bakers-Event`; `X-Bakers-Delivery`, the activity UUID, the same on every retry;
+  `X-Bakers-Timestamp`; `X-Bakers-Signature: sha256=<hex HMAC-SHA256 of "<timestamp>.<raw body>">`.
+  The bridge checks it as the guide's `verify` does and refuses a timestamp older than 5 minutes.
+- Answers: a wrong or missing signature, a stale timestamp or a body that is no event is refused,
+  logged, and answered 502 (Paperclip answers every refusal of a plugin webhook so; bakers.build
+  retries it). Everything else is answered at once: the bridge stores the delivery in its plugin
+  state, once per `X-Bakers-Delivery` (also across a Paperclip restart), and answers before it
+  reads anything, as bakers.build gives up after 5 s.
+- Then it reads the ticket with the group's key, finds the task among the ticket's links ending
+  in `/<prefix>/issues/<PREFIX-n>`, the one its company holds, else its parent's, grandparent's
+  and so on (the body has no parent: `bakers_ticket_search` names it), posting behind the
+  sub-ticket's identifier. A ticket without a task, as a group webhook sends for every ticket,
+  posts nothing and is no failure. A post that fails stays queued; the plugin job `drain` retries
+  it every minute, and each text is remembered once posted, so it reaches the task once.
+- Texts: `status_changed` posts the state line of `new_state` (done with the ticket link);
+  `claimed` the run line of the state it was claimed in (bakers.build sends it for the first run
+  outside qualification only); `run_ended` *paused* when the ticket's newest run failed, expired
+  or was cancelled in its current state, the ticket is not frozen and no note is open. `created`,
+  `assigned`, `review_requested` and `review_completed` post nothing themselves.
+- On every event the bridge also looks at the ticket: a frozen ticket labelled `Question` or
+  `technical problem` posts the lead-in and its note, once per freeze; each preview link
+  (designbook, DDEV) posts once. Summaries are written for developers, so nothing of them is
+  passed on; what came out and where to test are on the ticket, or the PM agent tells.
+- **What bakers.build does not send.** No activity is written for a label, a freeze or a link,
+  so a question or a preview link reaches the task with the ticket's *next* event, not when it is
+  set. `run_ended` is not sent for a run that ends `done`, so Hermes' *waiting for a decision*
+  line is dropped. Both need an activity in bakers.build to come back.
+- **Delay.** bakers.build sends on its cron run: every delivery and retry waits for the next one
+  (`CRON_INTERVAL`, 300 s by default in its standalone stack). A question's lead-in is that late.
+- **Down time.** A failed delivery is retried after 1, 2, 4 and 8 minutes, then dropped. When
+  Paperclip is unreachable longer than that, those events are lost: the bridge does no catch-up
+  read, and the next event of the ticket brings its open question and preview links.
+- **Scope.** Use a group webhook. A workspace webhook works too when its secret is set in every
+  company of that workspace: the delivery verifies against each, and the company that holds the
+  ticket's task posts; for the rest of the tickets it posts nothing.
 
 What the Hermes poller said and the bridge does not: the *still working* heartbeat (no event
 carries it), closing a request that stays silent for a week, and the sentences it took from
@@ -168,7 +194,7 @@ pnpm bakers:seed
 pnpm test:e2e                            # against Paperclip and the local bakers.build
 ```
 
-bakers.build has no webhook yet, so the e2e tests send its events themselves, signed, while
-the tickets live in the local bakers.build. `tests/e2e/agent.test.mjs` runs the live PM agent and needs `ANTHROPIC_API_KEY` or
+The e2e tests change real tickets in the local bakers.build, whose Demo group webhook brings
+each text into the task; only the refusal tests sign a delivery by hand. `tests/e2e/agent.test.mjs` runs the live PM agent and needs `ANTHROPIC_API_KEY` or
 `CLAUDE_CODE_OAUTH_TOKEN`; without either, those tests are skipped. CI (`.github/workflows/test.yml`) runs both suites, the live ones only
 when the repository secret `ANTHROPIC_API_KEY` is set.
