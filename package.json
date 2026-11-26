@@ -1,0 +1,24 @@
+{
+  "name": "bakers-paperclip",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.28.9",
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.mjs",
+    "skills": "sh scripts/skills.sh",
+    "bakers:seed": "sh scripts/bakers-seed.sh"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@modelcontextprotocol/server-filesystem": "2.2.0",
+    "@paperclipai/mcp-server": "2026.1117.0",
+    "@paperclipai/plugin-sdk": "2026.1117.0"
+  },
+  "devDependencies": {
+    "vitest": "5.1.0"
+  }
+}

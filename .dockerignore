@@ -1,0 +1,8 @@
+*
+!package.json
+!pnpm-lock.yaml
+!scripts/skills.sh
+!scripts/collect-skills.mjs
+!agent/mcp.json
+!agent/whois-mcp.mjs
+!bakers-bridge/

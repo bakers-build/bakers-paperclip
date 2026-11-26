@@ -1,0 +1,33 @@
+{
+  "mcpServers": {
+    "bakers": {
+      "type": "http",
+      "url": "${BAKERS_URL}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${BAKERS_API_KEY}"
+      }
+    },
+    "code": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/opt/bakers-paperclip/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js",
+        "/clones"
+      ]
+    },
+    "paperclip": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/opt/bakers-paperclip/node_modules/@paperclipai/mcp-server/dist/stdio.js"
+      ]
+    },
+    "whois": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/opt/bakers-paperclip/agent/whois-mcp.mjs"
+      ]
+    }
+  }
+}
