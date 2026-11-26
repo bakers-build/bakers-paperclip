@@ -8,3 +8,8 @@
 /.bakers/*.frozen.json
 /.bakers/*.bootstrapped.json
 /.bakers-worktrees/
+# Node and local runtime data.
+node_modules/
+/data/
+# Collected skill bundle (pnpm skills): built from pinned sources, not committed.
+/agent/skills/

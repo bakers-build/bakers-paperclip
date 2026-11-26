@@ -1,0 +1,21 @@
+{
+  "name": "bakers-paperclip",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.28.9",
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.mjs",
+    "skills": "node scripts/collect-skills.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@paperclipai/plugin-sdk": "2026.1117.0"
+  },
+  "devDependencies": {
+    "vitest": "5.1.0"
+  }
+}
