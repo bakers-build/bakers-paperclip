@@ -21,14 +21,15 @@ async function secret(ref, companyId) {
   return value;
 }
 
-// One group's bakers access and task posts, under its own key and company.
-function group(config, companyId, secret, key) {
+// One group's bakers access and task posts, under its own key and company. The key is resolved
+// only when core.mjs reads a ticket, that is for the group whose webhook secret verified.
+function group(config, companyId, webhookSecret) {
   const g = { companyId, agentId: config.agentId };
   let client;
-  const bakers = async () => (client ??= await connect(`${config.bakersUrl.replace(/\/+$/, '')}/mcp`, key));
+  const bakers = async () => (client ??= await connect(`${config.bakersUrl.replace(/\/+$/, '')}/mcp`, await secret(config.bakersApiKey, companyId)));
   const read = async (uuid) => (await bakers()).call('tool_api__bakers_ticket_read', { ticket: uuid, newest: 1000 });
   return {
-    secret,
+    secret: webhookSecret,
     messages: MESSAGES[config.language ?? 'de'],
     readTicket: read,
     holds: async (task) => Boolean(await ctx.issues.get(task.issue, g.companyId).catch(() => null)),
@@ -58,7 +59,7 @@ const plugin = definePlugin({
     }
     const groups = await Promise.all(
       configs.map(async ([companyId, config]) =>
-        group(config, companyId, await secret(config.webhookSecret, companyId), await secret(config.bakersApiKey, companyId)),
+        group(config, companyId, await secret(config.webhookSecret, companyId)),
       ),
     );
     const scope = (id) => ({ scopeKind: 'instance', stateKey: `event:${id}` });
