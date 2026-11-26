@@ -115,6 +115,10 @@ services:
     depends_on:
       bakers-deploy:
         condition: service_completed_successfully
+    environment:
+      <<: *bakers-env
+      # Webhook deliveries go out on cron: every 10 s, so the e2e tests see them within seconds.
+      CRON_INTERVAL: "10"
     command: /var/www/html/scripts/deploy/site-cron.sh
     restart: unless-stopped
 

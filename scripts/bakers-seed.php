@@ -1,8 +1,9 @@
 <?php
 // Seeds the local bakers.build (docker compose --profile bakers) for the e2e tests and the demo:
 // group Demo (DEMO Shop, DEMO2 Blog, team, conductor on DEMO), group "Other customer" (FOREIGN),
-// Rita Requester and Devon Developer, and the PM agent's service account, a member of the Demo
-// team only. Idempotent; prints BAKERS_E2E_API_KEY=<a new key> on its last line.
+// Rita Requester and Devon Developer, the PM agent's service account, a member of the Demo
+// team only, and the Demo group's webhook to the bridge. Idempotent; prints
+// BAKERS_E2E_WEBHOOK_SECRET=<the webhook's secret> and BAKERS_E2E_API_KEY=<a new key>.
 $etm = \Drupal::entityTypeManager();
 $one = fn (string $type, array $props) => current($etm->getStorage($type)->loadByProperties($props)) ?: NULL;
 $make = function (string $type, array $values) use ($etm) {
@@ -44,6 +45,17 @@ $project('FOREIGN', 'Another customer', 'A project of another group.', $other, $
 
 $machine = $get('bb_machine', ['host_key' => 'paperclip-e2e'], ['name' => 'paperclip-e2e', 'max_parallel' => 1, 'current_load' => 0, 'owner_user_id' => $devon->id(), 'assignment' => 'allow']);
 $get('bb_conductor', ['conductor_id' => 'paperclip-e2e-demo'], ['label' => 'paperclip-e2e · Demo Shop', 'status' => 'online', 'active' => TRUE, 'project_id' => $shop->id(), 'owner_user_id' => $devon->id(), 'machine' => $machine->id()]);
+
+// The Demo group's webhook, as README › Set up a group step 7 creates it on the group's Webhooks
+// tab. Saved without the form's validation: its https-only rule would refuse the bridge's address
+// inside the compose network.
+$webhook = $get('bb_webhook', ['name' => 'Paperclip', 'group_id' => $demo->id()], [
+  'workspace_id' => $ws->id(),
+  'url' => 'http://paperclip:3100/api/plugins/bakers-bridge/webhooks/bakers',
+  'enabled' => TRUE,
+  'owner_user_id' => $admin->id(),
+]);
+echo "BAKERS_E2E_WEBHOOK_SECRET={$webhook->getSecret()}\n";
 
 $accounts = \Drupal::service('bb_api_key.service_account_manager');
 $expiry = date('Y-m-d', strtotime('+1 year'));

@@ -50,8 +50,9 @@ export async function group(name = `Group ${randomUUID().slice(0, 8)}`) {
   const a = await instance();
   const company = ok(await a.api('POST', '/api/companies', { name }));
   const secret = async (key, value) => ok(await a.api('POST', `/api/companies/${company.id}/secrets`, { name: key, value })).id;
-  // Each group signs with a secret of its own, as each bakers.build group's webhook will.
-  const signing = randomUUID();
+  // The seeded Demo group's webhook secret (pnpm bakers:seed): bakers.build signs with it. Each test
+  // company is one more holder of that group's secret; the one that holds a ticket's task posts.
+  const signing = env.BAKERS_E2E_WEBHOOK_SECRET;
   const webhookSecret = await secret('BAKERS_WEBHOOK_SECRET', signing);
   const bakersKey = await secret('BAKERS_API_KEY', env.BAKERS_E2E_API_KEY);
   const adapterConfig = JSON.parse(file('agent/adapter-config.json'));
@@ -102,24 +103,46 @@ export async function comments(a, issue) {
   return [...list].sort((x, y) => Date.parse(x.createdAt) - Date.parse(y.createdAt));
 }
 
-/** A bakers.build event about `ticket`, as its webhook will send it. */
-export const event = (type, data, ticket) => ({ event_id: randomUUID(), type, occurred_at: new Date().toISOString(), ticket: { uuid: ticket.id, identifier: ticket.identifier }, data });
-
-/** POSTs an event signed with `secret` (a group's `signing`) straight to the bridge, as bakers.build would; returns the HTTP status. */
-export async function deliver(event, secret) {
-  const body = JSON.stringify(event);
+/**
+ * POSTs a body signed with `secret` as bb_webhook signs it (HMAC of "<timestamp>.<body>"), `age`
+ * seconds old, straight to the bridge; returns the HTTP status. Only the refusal tests send by
+ * hand: every other delivery is bakers.build's own.
+ */
+export async function deliver(body, secret, { age = 0 } = {}) {
+  const raw = JSON.stringify(body);
+  const ts = String(Math.floor(Date.now() / 1000) - age);
   const res = await fetch(WEBHOOK, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-bakers-signature': `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`,
-      'x-bakers-timestamp': String(Math.floor(Date.now() / 1000)),
+      'x-bakers-event': body.event,
+      'x-bakers-delivery': body.id,
+      'x-bakers-timestamp': ts,
+      'x-bakers-signature': `sha256=${createHmac('sha256', secret).update(`${ts}.${raw}`).digest('hex')}`,
     },
-    body,
+    body: raw,
   });
-  if (res.status !== 200) console.warn(`bridge answered ${res.status}: ${await res.text()}`);
   return res.status;
 }
+
+/**
+ * Makes bakers.build write an activity (`assigned`) on a ticket, as any later change of the ticket
+ * would: a label or a freeze writes none, so a question reaches the task with the next one.
+ */
+export async function nudge(client, ticket) {
+  const me = await tool(client, 'user_read', {});
+  return tool(client, 'ticket_update', { ticket: ticket.id, assignee: me.uuid });
+}
+
+/** The task's comment bodies, once bakers.build's cron has delivered and `done` says they are complete. */
+export const posted = (a, issue, done) =>
+  until(
+    async () => {
+      const bodies = (await comments(a, issue)).map((c) => c.body);
+      return done(bodies) ? bodies : null;
+    },
+    { tries: 120, ms: 1000 },
+  );
 
 export async function until(check, { tries = 100, ms = 200 } = {}) {
   for (let i = 0; i < tries; i++) {
