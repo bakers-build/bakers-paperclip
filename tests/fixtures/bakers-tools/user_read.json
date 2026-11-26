@@ -1,0 +1,21 @@
+{
+  "name": "bakers_user_read",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "user": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "E-mail address (any case) or username; default you.",
+        "title": "User"
+      }
+    },
+    "additionalProperties": false
+  }
+}

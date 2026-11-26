@@ -1,0 +1,42 @@
+{
+  "name": "bakers_conductor_list",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "project": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Project key (e.g. BAKERS) or UUID.",
+        "title": "Project"
+      },
+      "limit": {
+        "oneOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Rows per page, 1-100; default 50.",
+        "title": "Limit"
+      },
+      "offset": {
+        "oneOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Rows to skip; default 0.",
+        "title": "Offset"
+      }
+    },
+    "required": [
+      "project"
+    ],
+    "additionalProperties": false
+  }
+}

@@ -6,9 +6,9 @@ const read = (path) => JSON.parse(readFileSync(new URL(`../${path}`, import.meta
 const adapter = read('agent/adapter-config.json');
 const mcp = read('agent/mcp.json');
 
-// Notes bad4e721 (the 9 tools) and the spec (project_list, project_read).
-const BAKERS = ['ticket_create', 'ticket_read', 'ticket_search', 'ticket_update', 'ticket_transition', 'ticket_classify', 'comment_create', 'conductor_list', 'user_read', 'project_list', 'project_read'].map(
-  (t) => `mcp__bakers__tool_api__bakers_${t}`,
+// Note bad4e721 (the 9 tools) and project_read, the one project tool bakers.build serves; it has no project_list.
+const BAKERS = ['ticket_create', 'ticket_read', 'ticket_search', 'ticket_update', 'ticket_transition', 'ticket_classify', 'comment_create', 'conductor_list', 'user_read', 'project_read'].map(
+  (t) => `mcp__bakers__bakers_${t}`,
 );
 const CODE = ['read_text_file', 'list_directory', 'directory_tree', 'search_files', 'get_file_info'].map((t) => `mcp__code__${t}`);
 // The task tools the agent needs to read its task and answer in it.

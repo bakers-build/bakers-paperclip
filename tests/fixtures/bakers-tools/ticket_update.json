@@ -1,0 +1,240 @@
+{
+  "name": "bakers_ticket_update",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "ticket": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Ticket identifier (e.g. BAKERS-15) or UUID.",
+        "title": "Ticket"
+      },
+      "title": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "The new title, stored verbatim.",
+        "title": "Title"
+      },
+      "description": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "The new description as Markdown source; replaces the whole text, empty clears it. Raw HTML is stripped.",
+        "title": "Description"
+      },
+      "conductor": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "UUID of an active conductor of the ticket’s project.",
+        "title": "Conductor"
+      },
+      "assignee": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "UUID of the user to assign, when they may be assigned in the ticket’s workspace; empty clears the assignee. The conductor is kept.",
+        "title": "Assignee"
+      },
+      "labels_add": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "description": "Label names to add, e.g. agent:claude; created in the ticket’s workspace when missing and allowed. Existing labels are kept.",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One label name.",
+          "title": "Label"
+        },
+        "title": "Labels to add"
+      },
+      "labels_remove": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "description": "Label names to remove; names the ticket does not carry are ignored. Every other label is kept.",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One label name.",
+          "title": "Label"
+        },
+        "title": "Labels to remove"
+      },
+      "frozen": {
+        "oneOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "TRUE freezes the ticket for a release batch, FALSE unfreezes it.",
+        "title": "Frozen"
+      },
+      "environments_add": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "description": "Names or UUIDs of environments of the ticket’s project, e.g. the deployment target. Existing environments are kept.",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One environment name or UUID.",
+          "title": "Environment"
+        },
+        "title": "Environments to add"
+      },
+      "referenced_tickets_add": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "description": "Identifiers or UUIDs of readable tickets, e.g. a deployment’s batch. Existing references are kept.",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One ticket identifier or UUID.",
+          "title": "Ticket"
+        },
+        "title": "Referenced tickets to add"
+      },
+      "reviewers_add": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "description": "Reviewer user UUIDs to add; other reviewers stay. Omitted, null and empty lists change nothing.",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One active workspace user’s UUID.",
+          "title": "Reviewer"
+        },
+        "title": "Reviewers to add"
+      },
+      "reviewers_remove": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "description": "Reviewer user UUIDs to remove; other reviewers stay. Omitted, null and empty lists change nothing.",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One active workspace user’s UUID.",
+          "title": "Reviewer"
+        },
+        "title": "Reviewers to remove"
+      },
+      "links_add": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "description": "Links to add or retitle by exact URI. Omitted title keeps it; empty title clears it. Other links stay.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "uri": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The link target, e.g. a merge request URL.",
+              "title": "URI"
+            },
+            "title": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The link text.",
+              "title": "Title"
+            }
+          },
+          "required": [
+            "uri"
+          ],
+          "description": "One link.",
+          "title": "Link"
+        },
+        "title": "Links"
+      },
+      "links_remove": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "description": "Exact URIs to remove; absent URIs and empty lists change nothing.",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One stored link URI.",
+          "title": "URI"
+        },
+        "title": "Links to remove"
+      },
+      "blocked_by_add": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "description": "Identifiers or UUIDs of readable, open tickets of the same project this ticket waits for. Existing blockers are kept; a refused blocker refuses the whole call.",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One ticket identifier or UUID.",
+          "title": "Ticket"
+        },
+        "title": "Blockers to add"
+      },
+      "blocked_by_remove": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "description": "Identifiers or UUIDs of blockers to remove; tickets that are not blockers are ignored. Every other blocker is kept.",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One ticket identifier or UUID.",
+          "title": "Ticket"
+        },
+        "title": "Blockers to remove"
+      }
+    },
+    "required": [
+      "ticket"
+    ],
+    "additionalProperties": false
+  }
+}

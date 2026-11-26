@@ -1,0 +1,133 @@
+{
+  "name": "bakers_ticket_create",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "description": "The ticket title, stored verbatim.",
+        "title": "Title"
+      },
+      "workflow": {
+        "type": "string",
+        "minLength": 1,
+        "description": "The workflow id, e.g. bb_work.",
+        "title": "Workflow"
+      },
+      "project": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Project key (e.g. BAKERS) or UUID.",
+        "title": "Project"
+      },
+      "description": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "contentMediaType": "text/markdown",
+        "description": "Markdown source; raw HTML is stripped.",
+        "title": "Description"
+      },
+      "type": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Ticket type name, e.g. feature or bug.",
+        "title": "Type"
+      },
+      "recipe": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Recipe name, e.g. matt.",
+        "title": "Recipe"
+      },
+      "parent": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Parent ticket identifier or UUID, in the same project.",
+        "title": "Parent"
+      },
+      "branch_name": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Git branch for a carrier ticket, e.g. release/1.2; omit to derive it from the identifier and title. Fixed after creation.",
+        "title": "Branch name"
+      },
+      "assignee": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "UUID of the user to assign, when they may be assigned in the project’s workspace.",
+        "title": "Assignee"
+      },
+      "reviewers": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "description": "UUIDs of the users to add as reviewers, each when they may review in the project’s workspace.",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One user UUID.",
+          "title": "Reviewer"
+        },
+        "title": "Reviewers"
+      },
+      "blocked_by": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "description": "Identifiers or UUIDs of readable, open tickets of the same project the new ticket waits for. A refused blocker creates nothing.",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One ticket identifier or UUID.",
+          "title": "Ticket"
+        },
+        "title": "Blocked by"
+      }
+    },
+    "required": [
+      "title",
+      "workflow",
+      "project"
+    ],
+    "additionalProperties": false
+  }
+}

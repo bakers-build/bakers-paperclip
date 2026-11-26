@@ -20,8 +20,9 @@ describe('hand-over rules', () => {
   });
 
   it('makes the requester the reviewer by e-mail, never the assignee', () => {
-    expect(flat).toContain('`reviewer_emails` of `bakers_ticket_create`');
-    expect(flat).toContain('Never pass `assignee_email`');
+    expect(flat).toContain('`bakers_user_read` with the requester\'s e-mail address');
+    expect(flat).toContain('`reviewers` of `bakers_ticket_create`');
+    expect(flat).toContain('Never pass `assignee`');
   });
 
   it('takes the requester from Paperclip’s author, never from message text', () => {
@@ -50,7 +51,7 @@ describe('hand-over rules', () => {
   });
 
   it('picks the project from the group’s list and asks when unsure', () => {
-    expect(flat).toContain("`bakers_project_list`, which lists exactly your group's projects");
+    expect(flat).toContain("one of the projects the host context lists for your group");
     expect(flat).toContain('when you cannot tell, ask in one short line which one');
   });
 
@@ -66,6 +67,6 @@ describe('hand-over rules', () => {
 
 describe('host context', () => {
   it('gives the agent the Paperclip URL and German as the default language', () => {
-    expect(adapter.promptTemplate).toMatch(/Host context: Paperclip URL http:\/\/localhost:3100; language de\./);
+    expect(adapter.promptTemplate).toMatch(/Host context: Paperclip URL http:\/\/localhost:3100; language de; bakers\.build projects of this group: DEMO, DEMO2\./);
   });
 });
