@@ -26,11 +26,9 @@ function group(config, companyId, secret, key) {
   const g = { companyId, agentId: config.agentId };
   let client;
   const bakers = async () => (client ??= await connect(`${config.bakersUrl.replace(/\/+$/, '')}/mcp`, key));
-  const read = async (uuid) => (await bakers()).call('bakers_ticket_read', { ticket: uuid, newest: 1000 });
+  const read = async (uuid) => (await bakers()).call('tool_api__bakers_ticket_read', { ticket: uuid, newest: 1000 });
   return {
     secret,
-    paperclipUrl: config.paperclipUrl,
-    zones: (config.previewZones ?? '').split(',').map((z) => z.trim().toLowerCase()).filter(Boolean),
     messages: MESSAGES[config.language ?? 'de'],
     readTicket: read,
     readComment: async (uuid, id) => (await read(uuid))?.comments?.find((c) => c.id === id) ?? null,

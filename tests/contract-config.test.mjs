@@ -6,13 +6,13 @@ const read = (path) => JSON.parse(readFileSync(new URL(`../${path}`, import.meta
 const adapter = read('agent/adapter-config.json');
 const mcp = read('agent/mcp.json');
 
-// Note bad4e721 (the 9 tools) and project_read, the one project tool bakers.build serves; it has no project_list.
-const BAKERS = ['ticket_create', 'ticket_read', 'ticket_search', 'ticket_update', 'ticket_transition', 'ticket_classify', 'comment_create', 'conductor_list', 'user_read', 'project_read'].map(
-  (t) => `mcp__bakers__bakers_${t}`,
+// Note bad4e721 (the 9 tools) and the spec's project_list and project_read, as bakers.build's /mcp names them.
+const BAKERS = ['ticket_create', 'ticket_read', 'ticket_search', 'ticket_update', 'ticket_transition', 'ticket_classify', 'comment_create', 'conductor_list', 'user_read', 'project_list', 'project_read'].map(
+  (t) => `mcp__bakers__tool_api__bakers_${t}`,
 );
 const CODE = ['read_text_file', 'list_directory', 'directory_tree', 'search_files', 'get_file_info'].map((t) => `mcp__code__${t}`);
 // The task tools the agent needs to read its task and answer in it.
-const PAPERCLIP = ['paperclipGetIssue', 'paperclipListComments', 'paperclipAddComment', 'paperclipUpdateIssue'].map((t) => `mcp__paperclip__${t}`);
+const PAPERCLIP = ['paperclipGetIssue', 'paperclipListComments', 'paperclipAddComment', 'paperclipUpdateIssue', 'paperclipGetProject', 'paperclipListProjects'].map((t) => `mcp__paperclip__${t}`);
 const CODE_WRITES = ['write_file', 'edit_file', 'create_directory', 'move_file'].map((t) => `mcp__code__${t}`);
 
 const flag = (name) => {
@@ -31,6 +31,10 @@ describe('adapter config', () => {
     // Skill only loads a skill's instructions (bb-create-ticket and its recipes); it runs nothing.
     expect(flag('--tools')).toBe('Skill');
     expect(adapter.extraArgs).not.toContain('--dangerously-skip-permissions');
+  });
+
+  it('loads the pinned skill bundle as a plugin from this repository', () => {
+    expect(flag('--plugin-dir')).toBe('/opt/bakers-paperclip/agent/plugin');
   });
 
   it('loads only this repository’s MCP config, strictly', () => {

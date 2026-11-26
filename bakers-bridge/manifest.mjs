@@ -16,12 +16,10 @@ export default {
   // Per company: each company is one bakers.build group.
   instanceConfigSchema: {
     type: 'object',
-    required: ['bakersUrl', 'paperclipUrl', 'agentId', 'webhookSecret', 'bakersApiKey'],
+    required: ['bakersUrl', 'agentId', 'webhookSecret', 'bakersApiKey'],
     properties: {
       bakersUrl: { type: 'string', title: 'bakers.build URL', default: 'https://app.bakers.build' },
-      paperclipUrl: { type: 'string', title: 'Paperclip public URL', default: 'http://localhost:3100' },
       language: { type: 'string', title: 'Language of the fixed texts', enum: ['de', 'en'], default: 'de' },
-      previewZones: { type: 'string', title: 'Preview DNS zones, comma-separated', default: '' },
       agentId: { type: 'string', title: 'PM agent ID, the author of the posts' },
       webhookSecret: { ...secretRef, title: 'The group’s webhook signing secret' },
       bakersApiKey: { ...secretRef, title: 'The group’s service-account API key' },

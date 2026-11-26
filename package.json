@@ -9,7 +9,8 @@
   "scripts": {
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.mjs",
-    "skills": "sh scripts/skills.sh"
+    "skills": "sh scripts/skills.sh",
+    "bakers:seed": "sh scripts/bakers-seed.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",

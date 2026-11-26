@@ -1,7 +1,8 @@
 // AC-5: a bakers webhook event reaches its task once; a wrong signature or an unknown ticket is refused and logged.
+// bakers.build has no webhook yet: the test sends the events, the bridge reads the ticket from the local bakers.build.
 import { randomUUID } from 'node:crypto';
 import { beforeAll, expect, it } from 'vitest';
-import { comments, deliver, group, linkedTicket, until } from './fixture.mjs';
+import { comments, deliver, event as bakersEvent, group, linkedTicket, until } from './fixture.mjs';
 
 let g, linked;
 beforeAll(async () => {
@@ -9,7 +10,7 @@ beforeAll(async () => {
   linked = await linkedTicket(g);
 });
 
-const event = (type, data, ticket = linked.ticket) => ({ event_id: randomUUID(), type, occurred_at: new Date().toISOString(), ticket: { uuid: ticket.uuid, identifier: ticket.identifier }, data });
+const event = (type, data, ticket = linked.ticket) => bakersEvent(type, data, ticket);
 
 it('posts a state change into the task, as the PM agent, once even when redelivered', async () => {
   const ev = event('ticket.state_changed', { from: 'plan', to: 'working' });
@@ -27,5 +28,5 @@ it('refuses a wrong signature and records the failed delivery', async () => {
 });
 
 it('refuses an event for an unknown ticket', async () => {
-  expect(await deliver(event('run.started', { state_at_start: 'working' }, { uuid: randomUUID(), identifier: 'DEMO-999' }))).toBe(502);
+  expect(await deliver(event('run.started', { state_at_start: 'working' }, { id: randomUUID(), identifier: 'DEMO-999' }))).toBe(502);
 });

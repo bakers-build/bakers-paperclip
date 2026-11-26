@@ -50,8 +50,12 @@ describe('hand-over rules', () => {
   });
 
   it('picks the project from the group’s list and asks when unsure', () => {
-    expect(flat).toContain("one of the projects the host context lists for your group");
+    expect(flat).toContain("the bakers.build project of the task's Paperclip project, by the key its description names");
     expect(flat).toContain('when you cannot tell, ask in one short line which one');
+  });
+
+  it('replies through the run’s final response, which Paperclip posts, in the company’s language', () => {
+    expect(flat).toContain("Your reply to the task is your run's final response: Paperclip posts it into the task as your comment.");
   });
 
   it('settles an uncertain write by reading, and keeps secrets out', () => {
@@ -66,6 +70,7 @@ describe('hand-over rules', () => {
 
 describe('host context', () => {
   it('names the Paperclip URL, German as the default language and the group’s projects', () => {
-    expect(agents).toContain('- Paperclip URL: http://localhost:3100\n- Language: de\n- bakers.build projects of this group: DEMO, DEMO2');
+    expect(agents).toContain('- Paperclip URL: http://localhost:3100\n- Language: de\n');
+    expect(flat).toContain("each one's description starts with `bakers.build: <project key>`");
   });
 });

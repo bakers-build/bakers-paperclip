@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds agent/skills/ from pinned public sources, as hermes-bot's Dockerfile did:
+# Builds agent/plugin/ (gitignored) from pinned public sources, as hermes-bot's Dockerfile did:
 # bb-create-ticket and both recipes with every bundle file their links reach, plus the
 # recipes' method skills unchanged. Run from the repository root: pnpm skills
 set -eu
@@ -18,12 +18,15 @@ fetch bakers bakers-build/bakers-build "$BAKERS"
 fetch superpowers obra/superpowers "$SUPERPOWERS"
 fetch mattpocock mattpocock/skills "$MATTPOCOCK"
 
-out=agent/skills
-rm -rf "$out"
+# A Claude plugin the agent's CLI loads with --plugin-dir: .claude-plugin/plugin.json and skills/.
+plugin=agent/plugin
+out=$plugin/skills
+rm -rf "$plugin"
 node scripts/collect-skills.mjs "$src/bakers/.claude/skills/bakers-build" "$out" bb-create-ticket bb-recipe-superpowers bb-recipe-matt
+mv "$out/.claude-plugin" "$plugin/"
 cp -R "$src/superpowers/skills/brainstorming" "$src/superpowers/skills/writing-plans" "$out/"
 cp -R "$src/mattpocock/skills/productivity/grilling" "$out/"
-mkdir -p "$out/LICENSES"
-cp "$src/superpowers/LICENSE" "$out/LICENSES/superpowers"
-cp "$src/mattpocock/LICENSE" "$out/LICENSES/mattpocock"
-echo "agent/skills: $(ls "$out" | tr '\n' ' ')"
+mkdir -p "$plugin/LICENSES"
+cp "$src/superpowers/LICENSE" "$plugin/LICENSES/superpowers"
+cp "$src/mattpocock/LICENSE" "$plugin/LICENSES/mattpocock"
+echo "agent/plugin/skills: $(ls "$out" | tr '\n' ' ')"

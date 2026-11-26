@@ -44,8 +44,6 @@ beforeEach(() => {
   seen = new Set();
   deps = {
     now: () => NOW,
-    paperclipUrl: PAPERCLIP,
-    zones: ['preview.example.org'],
     messages: de,
     seen: { has: async (id) => seen.has(id), add: async (id) => void seen.add(id) },
     log: (level, message, meta) => logs.push({ level, message, meta }),
@@ -94,6 +92,14 @@ describe('deliver: refusals', () => {
     expect(res.status).toBe(404);
     expect(posts).toEqual([]);
     expect(logs.some((l) => l.level === 'warn' && /unknown ticket/.test(l.message))).toBe(true);
+  });
+
+  it('takes no other /issues/ link for the task: a GitHub issue, or a task of another company', async () => {
+    tickets['t-1'] = ticket({ links: [{ uri: 'https://github.com/o/r/issues/12', title: 'GitHub' }, { uri: 'https://elsewhere.example/ZZZ/issues/ZZZ-9', title: 'x' }] });
+    deps.groups[1].holds = async (task) => task.issue !== 'ZZZ-9';
+    const res = await deliver(sign(event('run.started', { state_at_start: 'working' })), deps);
+    expect(res.status).toBe(404);
+    expect(posts).toEqual([]);
   });
 
   it('refuses a ticket without a Paperclip task, nor an ancestor with one, with 404', async () => {
@@ -186,16 +192,13 @@ describe('deliver: texts', () => {
     expect(await textOf(event('comment.created', { comment_id: 's1', type: 'summary' }))).toEqual(['Vouchers can now be redeemed in the checkout.']);
   });
 
-  it('a new summary posts each preview link of its Manual review on a preview zone once', async () => {
+  it('a new summary posts no link of its Manual review: agent text reaches the requester only as plain sentences', async () => {
     comments.s2 = {
       id: 's2',
       type: 'summary',
-      body: '### 🎯 Outcome\nReady.\n\n### 🧪 Manual review\n[Checkout](https://shop.preview.example.org/cart) and https://evil.example.com/x and https://shop.preview.example.org/cart again.',
+      body: '### 🎯 Outcome\nReady.\n\n### 🧪 Manual review\n[Checkout](https://shop.preview.example.org/cart) and https://evil.example.com/x.',
     };
-    expect(await textOf(event('comment.created', { comment_id: 's2', type: 'summary' }))).toEqual([
-      'Ready.',
-      'Es gibt etwas zum Ansehen: Checkout\nhttps://shop.preview.example.org/cart',
-    ]);
+    expect(await textOf(event('comment.created', { comment_id: 's2', type: 'summary' }))).toEqual(['Ready.']);
   });
 
   it('a comment that is no summary posts nothing', async () => {

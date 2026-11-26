@@ -41,14 +41,24 @@ jobs:
             echo "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN"
             echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)"
             echo "PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=$(openssl rand -hex 32)"
-            echo "DEMO_BAKERS_API_KEY=$(openssl rand -hex 16)"
             echo "BAKERS_WEBHOOK_SECRET=$(openssl rand -hex 32)"
+            echo "BAKERS_DB_PASSWORD=$(openssl rand -hex 16)"
+            echo "BAKERS_DB_ROOT_PASSWORD=$(openssl rand -hex 16)"
+            echo "BAKERS_HASH_SALT=$(openssl rand -hex 32)"
           } > .env
           mkdir -p data/clones
-      - run: docker compose --profile demo up -d
-      - name: Wait for Paperclip
-        run: for i in $(seq 1 100); do curl -sf localhost:3100/api/health && exit 0; sleep 3; done; docker compose logs; exit 1
+      - run: echo '127.0.0.1 bakers.localhost' | sudo tee -a /etc/hosts
+      - run: pnpm skills
+      - run: docker compose --profile bakers up -d
+      - name: Wait for Paperclip and bakers.build
+        run: |
+          for i in $(seq 1 100); do
+            curl -sf localhost:3100/api/health >/dev/null && curl -sf -o /dev/null --resolve bakers.localhost:8080:127.0.0.1 http://bakers.localhost:8080/user/login && exit 0
+            sleep 3
+          done
+          docker compose --profile bakers logs; exit 1
+      - run: pnpm bakers:seed
       # The live PM agent's tests (tests/e2e/agent.test.mjs) read the credential from .env; without one they are skipped.
       - run: pnpm test:e2e
       - if: failure()
-        run: docker compose logs --tail 300
+        run: docker compose --profile bakers logs --tail 300

@@ -3,7 +3,7 @@
 import { createHmac, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { connect } from '../../bakers-bridge/bakers-client.mjs';
-import { DEMO, PAPERCLIP, ok, session } from './paperclip.mjs';
+import { PAPERCLIP, ok, session } from './paperclip.mjs';
 
 const root = new URL('../../', import.meta.url);
 const file = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -23,8 +23,14 @@ export const env = {
   ...process.env,
 };
 export const WEBHOOK = `${PAPERCLIP}/api/plugins/bakers-bridge/webhooks/bakers`;
-// Paperclip reaches the demo inside the compose network.
-const BAKERS_IN_COMPOSE = 'http://bakers-demo:8090';
+// The local bakers.build (docker compose --profile bakers up, pnpm bakers:seed): from this machine,
+// and as Paperclip reaches it inside the compose network.
+export const BAKERS = env.BAKERS_HOST_URL ?? 'http://bakers.localhost:8080';
+const BAKERS_IN_COMPOSE = 'http://bakers-gateway';
+/** The seeded PM agent service account's MCP session. */
+export const bakers = () => connect(`${BAKERS}/mcp`, env.BAKERS_E2E_API_KEY);
+/** One bakers.build tool's result, as the service account. */
+export const tool = (client, name, args) => client.call(`tool_api__bakers_${name}`, args);
 
 let adminSession;
 export const admin = () => (adminSession ??= session({ email: 'admin@example.org', name: 'Ada Admin' }));
@@ -45,7 +51,7 @@ export async function group(name = `Group ${randomUUID().slice(0, 8)}`) {
   const company = ok(await a.api('POST', '/api/companies', { name }));
   const secret = async (key, value) => ok(await a.api('POST', `/api/companies/${company.id}/secrets`, { name: key, value })).id;
   const webhookSecret = await secret('BAKERS_WEBHOOK_SECRET', env.BAKERS_WEBHOOK_SECRET);
-  const bakersKey = await secret('BAKERS_API_KEY', env.DEMO_BAKERS_API_KEY);
+  const bakersKey = await secret('BAKERS_API_KEY', env.BAKERS_E2E_API_KEY);
   const adapterConfig = JSON.parse(file('agent/adapter-config.json'));
   adapterConfig.env.BAKERS_API_KEY.secretId = bakersKey;
   adapterConfig.env.BAKERS_URL.value = BAKERS_IN_COMPOSE;
@@ -64,25 +70,28 @@ export async function group(name = `Group ${randomUUID().slice(0, 8)}`) {
       companyId: company.id,
       configJson: {
         bakersUrl: BAKERS_IN_COMPOSE,
-        paperclipUrl: PAPERCLIP,
         language: 'de',
-        previewZones: 'preview.example.org',
         agentId: agent.id,
         webhookSecret: { type: 'secret_ref', secretId: webhookSecret },
         bakersApiKey: { type: 'secret_ref', secretId: bakersKey },
       },
     }),
   );
-  return { admin: a, company, agent };
+  // One Paperclip project per bakers.build project of the group (README › Set up a group).
+  const projects = {};
+  for (const [key, name] of [['DEMO', 'Demo Shop'], ['DEMO2', 'Demo Blog']]) {
+    projects[key] = ok(await a.api('POST', `/api/companies/${company.id}/projects`, { name, description: `bakers.build: ${key}`, status: 'in_progress' }));
+  }
+  return { admin: a, company, agent, projects };
 }
 
 /** A task in the company and a demo ticket that links it, as the PM agent leaves them. */
-export async function linkedTicket({ admin: a, company }, title = 'Gutscheine im Checkout') {
-  const issue = ok(await a.api('POST', `/api/companies/${company.id}/issues`, { title, description: 'e2e' }));
-  const bakers = await connect(`${DEMO}/mcp`, env.DEMO_BAKERS_API_KEY);
-  const ticket = await bakers.call('bakers_ticket_create', { title, workflow: 'bb_work', project: 'DEMO' });
-  await bakers.call('bakers_ticket_update', { ticket: ticket.uuid, links_add: [{ uri: `${PAPERCLIP}/${company.issuePrefix}/issues/${issue.identifier}`, title: 'Paperclip task' }] });
-  return { issue, ticket, bakers };
+export async function linkedTicket({ admin: a, company, projects }, title = 'Gutscheine im Checkout', key = 'DEMO') {
+  const issue = ok(await a.api('POST', `/api/companies/${company.id}/issues`, { title, description: 'e2e', projectId: projects[key].id }));
+  const client = await bakers();
+  const ticket = await tool(client, 'ticket_create', { title, workflow: 'bb_work', project: key, description: 'e2e' });
+  await tool(client, 'ticket_update', { ticket: ticket.id, links_add: [{ uri: `${PAPERCLIP}/${company.issuePrefix}/issues/${issue.identifier}`, title: 'Paperclip task' }] });
+  return { issue, ticket, bakers: client };
 }
 
 /** The task's comment bodies, oldest first. */
@@ -91,7 +100,8 @@ export async function comments(a, issue) {
   return [...list].sort((x, y) => Date.parse(x.createdAt) - Date.parse(y.createdAt));
 }
 
-export const emit = async (type, ticket, data) => ok({ status: (await fetch(`${DEMO}/emit`, { method: 'POST', body: JSON.stringify({ type, ticket, data }) })).status, body: null });
+/** A bakers.build event about `ticket`, as its webhook will send it. */
+export const event = (type, data, ticket) => ({ event_id: randomUUID(), type, occurred_at: new Date().toISOString(), ticket: { uuid: ticket.id, identifier: ticket.identifier }, data });
 
 /** POSTs a signed event straight to the bridge, as bakers.build would; returns the HTTP status. */
 export async function deliver(event, { secret = env.BAKERS_WEBHOOK_SECRET } = {}) {

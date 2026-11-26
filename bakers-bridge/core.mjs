@@ -70,35 +70,6 @@ function manualReview(markdown) {
   return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-// A host exactly one DNS label under a zone, https, no credentials or port.
-const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-const onZone = (url, zones) => {
-  const authority = /^https:\/\/([^/?#]*)(?:[/?#]|$)/i.exec(url)?.[1].toLowerCase();
-  if (!authority || !URL.canParse(url)) return false;
-  return zones.some((z) => authority.endsWith(`.${z}`) && LABEL.test(authority.slice(0, -z.length - 1)));
-};
-
-/** Links of a summary's Manual review on a preview zone, each once (updates.mjs previewLinks). */
-export function previewLinks(markdown, zones) {
-  if (!zones.length) return [];
-  const found = new Map();
-  let inCode = false;
-  for (const line of section(markdown, /manual review/i)) {
-    if (/^\s*(```|~~~)/.test(line)) {
-      inCode = !inCode;
-      continue;
-    }
-    if (inCode) continue;
-    for (const m of line.replace(/`[^`]*`/g, ' ').matchAll(/\[([^\]]*)\]\(\s*([^)\s]+)\s*\)|<(https:\/\/[^>\s]+)>|(https:\/\/[^\s<>()[\]]+)/gi)) {
-      const url = m[2] ?? m[3] ?? m[4].replace(/[.,;:!?)]+$/, '');
-      if (found.has(url) || !onZone(url, zones)) continue;
-      const label = plain(m[1] ?? '');
-      found.set(url, INTERNAL.some((r) => r.test(label)) ? '' : label);
-    }
-  }
-  return [...found].map(([url, text]) => ({ url, text }));
-}
-
 // A link of kind design or ddev (updates.mjs preview).
 function isPreview(uri) {
   if (/\/-\/merge_requests\/|\/artifacts\/|playwright-report/.test(uri)) return false;
@@ -148,8 +119,8 @@ export async function texts(ev, t, deps) {
       if (!c || c.type !== 'summary') return [];
       const out = [];
       const sentences = outcome(c.body);
+      // Only plain sentences: a summary's links are written for developers and stay in bakers.build.
       if (sentences.length) out.push(sentences.join(' '));
-      for (const l of previewLinks(c.body, deps.zones ?? [])) out.push(`${m.previewLead} ${l.text}`.trim() + `\n${l.url}`);
       return out;
     }
     case 'ticket.labels_changed': {
@@ -171,15 +142,17 @@ export async function texts(ev, t, deps) {
   }
 }
 
-/** The Paperclip task a ticket links: a link under PAPERCLIP_PUBLIC_URL ending in /issues/<id>. */
-export function taskOf(t, paperclipUrl) {
-  const base = paperclipUrl.replace(/\/+$/, '');
+/**
+ * The Paperclip tasks a ticket may link: every link whose path ends in /<prefix>/issues/<PREFIX-n>.
+ * Which one is the task decides the group's company (`holds`), not the host.
+ */
+export function tasksOf(t) {
+  const found = [];
   for (const { uri } of t.links ?? []) {
-    if (!uri.startsWith(`${base}/`)) continue;
-    const issue = /\/issues\/([^/?#]+)\/?(?:[?#].*)?$/.exec(uri)?.[1];
-    if (issue) return { issue: decodeURIComponent(issue), url: uri };
+    const issue = /\/([A-Za-z0-9]+)\/issues\/(\1-\d+)\/?(?:[?#].*)?$/.exec(uri)?.[2];
+    if (issue) found.push({ issue, url: uri });
   }
-  return null;
+  return found;
 }
 
 /**
@@ -221,15 +194,19 @@ export async function deliver({ headers, rawBody }, deps) {
     const mine = await g.readTicket(ev.ticket.uuid);
     if (!mine) continue;
     t ??= mine;
-    let found = taskOf(mine, g.paperclipUrl ?? deps.paperclipUrl);
+    const held = async (candidates) => {
+      for (const c of candidates) if (await (g.holds?.(c) ?? true)) return c;
+      return null;
+    };
+    let found = await held(tasksOf(mine));
     let up = false;
     // shortcut: one ancestor level, from the event's parent_uuid; walk further once bakers returns parents.
     if (!found && ev.ticket.parent_uuid) {
       const parent = await g.readTicket(ev.ticket.parent_uuid);
-      found = parent && taskOf(parent, g.paperclipUrl ?? deps.paperclipUrl);
+      found = parent && (await held(tasksOf(parent)));
       up = Boolean(found);
     }
-    if (found && (await (g.holds?.(found) ?? true))) {
+    if (found) {
       [t, task, inherited, group] = [mine, found, up, g];
       break;
     }
@@ -242,7 +219,7 @@ export async function deliver({ headers, rawBody }, deps) {
     deps.log('warn', `refused webhook: unknown ticket ${t.identifier}: no Paperclip task`, { event_id: ev.event_id });
     return { status: 404, reason: 'no task' };
   }
-  // The group's own settings (language, zones, Paperclip URL) over the shared ones.
+  // The group's own settings (its language) over the shared ones.
   deps = { ...deps, ...group };
   for (const text of await texts(ev, t, deps)) {
     await deps.post(task, inherited && !text.startsWith(`${t.identifier} · `) ? `${t.identifier} · ${text}` : text);

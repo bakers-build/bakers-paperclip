@@ -1,6 +1,5 @@
 // A Paperclip board session for the e2e tests: sign-up or sign-in, then JSON API calls.
 export const PAPERCLIP = process.env.PAPERCLIP_PUBLIC_URL ?? 'http://localhost:3100';
-export const DEMO = `http://localhost:${process.env.DEMO_PORT ?? 8090}`;
 
 export async function session({ email, name, password = 'e2e-password-123456' }) {
   let cookie = '';
